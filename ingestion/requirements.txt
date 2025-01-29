@@ -1,0 +1,6 @@
+whisperx
+yt-dlp
+pandas
+boto3
+torch
+pyarrow 

@@ -1,0 +1,40 @@
+name: Deploy CDK App
+
+on:
+  push:
+    branches:
+      - prod
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          
+      - name: Install dependencies
+        run: |
+          cd infrastructure
+          pip install -r requirements.txt
+          
+      - name: Build Lambda packages
+        run: |
+          cd infrastructure/lambda/query
+          python build.py
+          
+      - name: Deploy CDK app
+        run: |
+          cd infrastructure
+          cdk deploy --all --require-approval never 
