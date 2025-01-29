@@ -5,6 +5,16 @@ on:
     branches:
       - prod
   workflow_dispatch:
+    inputs:
+      stack:
+        description: 'Stack to deploy (analytics/dashboard/all)'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - analytics
+          - dashboard
+          - all
 
 jobs:
   deploy:
@@ -30,6 +40,7 @@ jobs:
           pip install -r requirements.txt
           
       - name: Build Lambda packages
+        if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.stack == 'dashboard' || github.event.inputs.stack == 'all') }}
         run: |
           cd infrastructure/lambda/query
           python build.py
@@ -37,4 +48,18 @@ jobs:
       - name: Deploy CDK app
         run: |
           cd infrastructure
-          cdk deploy --all --require-approval never 
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "Deploying Analytics stack only (push to prod)..."
+            cdk deploy TiktokAnalyticsStack --require-approval never
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            if [[ "${{ github.event.inputs.stack }}" == "analytics" ]]; then
+              echo "Deploying Analytics stack..."
+              cdk deploy TiktokAnalyticsStack --require-approval never
+            elif [[ "${{ github.event.inputs.stack }}" == "dashboard" ]]; then
+              echo "Deploying Dashboard stack..."
+              cdk deploy TiktokDashboardStack --require-approval never
+            elif [[ "${{ github.event.inputs.stack }}" == "all" ]]; then
+              echo "Deploying all stacks..."
+              cdk deploy --all --require-approval never
+            fi
+          fi 
