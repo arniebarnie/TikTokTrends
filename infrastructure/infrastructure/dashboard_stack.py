@@ -201,48 +201,48 @@ class DashboardStack(Stack):
             string_value=instance.instance_private_ip
         )
 
-        # Create Lambda role
-        lambda_role = iam.Role(self, "LambdaRole",
-            assumed_by=iam.ServicePrincipal("lambda.amazonaws.com")
-        )
+        # # Create Lambda role
+        # lambda_role = iam.Role(self, "LambdaRole",
+        #     assumed_by=iam.ServicePrincipal("lambda.amazonaws.com")
+        # )
 
-        # Allow Lambda to access the database password
-        db_root_password.grant_read(lambda_role)
+        # # Allow Lambda to access the database password
+        # db_root_password.grant_read(lambda_role)
 
-        # Allow Lambda to access VPC resources
-        lambda_role.add_managed_policy(
-            iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaVPCAccessExecutionRole")
-        )
+        # # Allow Lambda to access VPC resources
+        # lambda_role.add_managed_policy(
+        #     iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaVPCAccessExecutionRole")
+        # )
 
-        # Add SSM Parameter Store permissions
-        lambda_role.add_to_policy(iam.PolicyStatement(
-            effect=iam.Effect.ALLOW,
-            actions=[
-                "ssm:GetParameter",
-                "ssm:GetParameters"
-            ],
-            resources=[
-                f"arn:aws:ssm:{self.region}:{self.account}:parameter/tiktok-analytics/*"
-            ]
-        ))
+        # # Add SSM Parameter Store permissions
+        # lambda_role.add_to_policy(iam.PolicyStatement(
+        #     effect=iam.Effect.ALLOW,
+        #     actions=[
+        #         "ssm:GetParameter",
+        #         "ssm:GetParameters"
+        #     ],
+        #     resources=[
+        #         f"arn:aws:ssm:{self.region}:{self.account}:parameter/tiktok-analytics/*"
+        #     ]
+        # ))
 
-        # Create query Lambda
-        query_lambda = lambda_.Function(self, "QueryLambda",
-            runtime=lambda_.Runtime.PYTHON_3_9,
-            handler="main.handler",
-            code=lambda_.Code.from_asset("lambda/query/lambda_function.zip"),
-            timeout=Duration.minutes(5),
-            memory_size=1024,
-            environment={
-                "DB_SECRET_ARN": db_root_password.secret_arn
-            },
-            vpc=vpc,
-            vpc_subnets=ec2.SubnetSelection(
-                subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
-            ),
-            security_groups=[mysql_security_group],
-            role=lambda_role
-        )
+        # # Create query Lambda
+        # query_lambda = lambda_.Function(self, "QueryLambda",
+        #     runtime=lambda_.Runtime.PYTHON_3_9,
+        #     handler="main.handler",
+        #     code=lambda_.Code.from_asset("lambda/query/lambda_function.zip"),
+        #     timeout=Duration.minutes(5),
+        #     memory_size=1024,
+        #     environment={
+        #         "DB_SECRET_ARN": db_root_password.secret_arn
+        #     },
+        #     vpc=vpc,
+        #     vpc_subnets=ec2.SubnetSelection(
+        #         subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS
+        #     ),
+        #     security_groups=[mysql_security_group],
+        #     role=lambda_role
+        # )
 
         # Add outputs
         CfnOutput(self, "GlueDatabaseName",
@@ -265,7 +265,7 @@ class DashboardStack(Stack):
             description="Database root password secret ARN"
         )
 
-        CfnOutput(self, "QueryLambdaName",
-            value=query_lambda.function_name,
-            description="Query Lambda function name"
-        ) 
+        # CfnOutput(self, "QueryLambdaName",
+        #     value=query_lambda.function_name,
+        #     description="Query Lambda function name"
+        # ) 

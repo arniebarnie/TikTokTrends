@@ -95,12 +95,49 @@ class AnalyticsStack(Stack):
             allow_all_outbound=True
         )
 
+        # Create launch template first
+        launch_template = ec2.CfnLaunchTemplate(self, "BatchLaunchTemplate",
+            launch_template_data={
+                "blockDeviceMappings": [
+                    {
+                        "deviceName": "/dev/xvda",
+                        "ebs": {
+                            "volumeSize": 100,
+                            "volumeType": "gp3",
+                            "deleteOnTermination": True
+                        }
+                    }
+                ],
+                "userData": Fn.base64(
+                    "MIME-Version: 1.0\n"
+                    "Content-Type: multipart/mixed; boundary=\"==BOUNDARY==\"\n"
+                    "\n"
+                    "--==BOUNDARY==\n"
+                    "Content-Type: text/cloud-config; charset=\"us-ascii\"\n"
+                    "\n"
+                    "#cloud-config\n"
+                    "repo_update: true\n"
+                    "repo_upgrade: all\n"
+                    "\n"
+                    "--==BOUNDARY==\n"
+                    "Content-Type: text/x-shellscript; charset=\"us-ascii\"\n"
+                    "\n"
+                    "#!/bin/bash\n"
+                    "mkdir -p /tmp/workspace\n"
+                    "chmod 777 /tmp/workspace\n"
+                    "\n"
+                    "--==BOUNDARY==--\n"
+                )
+            }
+        )
+
         # Create Batch compute environment
         compute_environment = batch.CfnComputeEnvironment(self, "BatchComputeEnv",
+            compute_environment_name=f"BatchComputeEnv-2",
             type="MANAGED",
             compute_resources={
                 "type": "SPOT",
-                "maxvCpus": 8,
+                "maxvCpus": 4 * 3,
                 "minvCpus": 0,
                 "desiredvCpus": 0,
                 "instanceTypes": ["g4dn.xlarge"],
@@ -109,25 +146,7 @@ class AnalyticsStack(Stack):
                 "securityGroupIds": [security_group.security_group_id],
                 "allocationStrategy": "SPOT_CAPACITY_OPTIMIZED",
                 "launchTemplate": {
-                    "launchTemplateId": ec2.CfnLaunchTemplate(self, "BatchLaunchTemplate",
-                        launch_template_data={
-                            "blockDeviceMappings": [
-                                {
-                                    "deviceName": "/dev/xvda",
-                                    "ebs": {
-                                        "volumeSize": 100,
-                                        "volumeType": "gp3",
-                                        "deleteOnTermination": True
-                                    }
-                                }
-                            ],
-                            "userData": Fn.base64(
-                                "#!/bin/bash\n"
-                                "mkdir -p /tmp/workspace\n"
-                                "chmod 777 /tmp/workspace\n"
-                            )
-                        }
-                    ).ref,
+                    "launchTemplateId": launch_template.ref,
                     "version": "$Latest"
                 },
                 "spotIamFleetRole": iam.Role(self, "SpotFleetRole",
@@ -181,7 +200,7 @@ class AnalyticsStack(Stack):
             },
             job_definition_name="tiktok-transcriber-job",
             timeout={
-                "attemptDurationSeconds": 7200
+                "attemptDurationSeconds": 60 * 60 * 24
             }
         )
 

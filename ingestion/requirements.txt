@@ -1,6 +1,5 @@
-whisperx
 yt-dlp
+whisperx
 pandas
 boto3
-torch
-pyarrow 
+pyarrow
