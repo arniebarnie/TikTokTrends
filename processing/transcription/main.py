@@ -33,7 +33,7 @@ class Config:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.compute_type = "float16" if self.device == "cuda" else "float32"
         self.model_name = "base.en"
-        self.batch_size = 8
+        self.batch_size = 32
         
         # Local paths
         self.workspace = Path("/workspace")
