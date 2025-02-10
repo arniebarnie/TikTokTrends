@@ -16,7 +16,7 @@ This project implements a scalable data pipeline for analyzing TikTok videos usi
 
 ## Architecture
 
-### Pipeline Stages
+### ETL Pipeline
 
 1. **Metadata Extraction**
    - Downloads video metadata using yt-dlp
@@ -31,18 +31,86 @@ This project implements a scalable data pipeline for analyzing TikTok videos usi
    - Stores transcripts in S3
 
 3. **Text Analysis**
-   - Triggered automatically when new transcripts arrive
    - Analyzes transcripts using OpenAI GPT
    - Extracts categories, summaries, and keywords
    - Runs on AWS Batch Fargate containers
    - Stores analysis results in S3
+
+### Data Lake Structure
+The data is organized in an S3-based data lake with the following structure:
+
+```
+s3://tiktoktrends/
+├── videos/
+│   ├── metadata/                 # Raw video metadata
+│   │   ├── profile=<profile>/
+│   │   │   └── processed_at=<timestamp>/
+│   │   │       └── metadata.parquet
+│   ├── transcripts/             # Video transcripts
+│   │   └── profile=<profile>/
+│   │       └── processed_at=<timestamp>/
+│   │           └── transcripts.parquet
+│   └── text/                    # Analyzed text data
+│       ├── profile=<profile>/
+│       │   └── processed_at=<timestamp>/
+│       │       └── analysis.parquet
+└── athena-results/              # Athena query results
+```
+
+### AWS Glue Data Catalog
+The data lake is cataloged using AWS Glue with the following structure:
+
+#### Database: `tiktok_analytics`
+Contains tables for querying TikTok video metadata and text analysis results.
+
+##### Table: `metadata`
+Stores video metadata in Parquet format with Hive-style partitioning:
+- Partition Keys:
+  - `profile` (string)
+  - `processed_at` (string)
+- Columns:
+  - `id` (string)
+  - `title` (string)
+  - `description` (string)
+  - `upload_date` (bigint)
+  - `like_count` (bigint)
+  - `repost_count` (bigint)
+  - `comment_count` (bigint)
+  - `view_count` (bigint)
+  - `duration` (bigint)
+  - `webpage_url` (string)
+  - `channel` (string)
+  - `timestamp` (bigint)
+  - `track` (string)
+  - `artists` (array<string>)
+  - `artist` (string)
+  - `uploader` (string)
+
+##### Table: `text_analysis`
+Stores processed text data in Parquet format with Hive-style partitioning:
+- Partition Keys:
+  - `profile` (string)
+  - `processed_at` (string)
+- Columns:
+  - `id` (string)
+  - `uploader` (string)
+  - `description` (string)
+  - `title` (string)
+  - `transcript` (string)
+  - `language` (string)
+  - `category` (string)
+  - `summary` (string)
+  - `keywords` (array<string>)
+
+#### Partition Management
+The system automatically manages partitions through Lambda functions triggered by S3 events using Athena ALTER TABLE statements, ensuring that new data is immediately queryable through Athena without manual intervention or partition discovery jobs.
 
 ### Infrastructure
 
 The pipeline is built using AWS CDK with Python and includes:
 
 - **Networking**: VPC with public/private subnets
-- **Compute**: AWS Batch compute environments (GPU and Fargate)
+- **Compute**: AWS Batch compute environments (ECS and Fargate)
 - **Storage**: S3 buckets for data storage
 - **Serverless**: Lambda functions for pipeline orchestration
 - **Security**: IAM roles and security groups
@@ -90,7 +158,13 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Build and deploy the Docker images
+3. Deploy the infrastructure
+```sh
+cd infrastructure
+cdk deploy --all
+```
+
+4. Build and deploy the Docker images
 ```sh
 # Build metadata container
 cd ingestion/metadata
@@ -105,22 +179,16 @@ cd processing/text
 ./build.sh
 ```
 
-4. Deploy the infrastructure
-```sh
-cd infrastructure
-cdk deploy --all
-```
-
 ## Pipeline Flow
 
 ```mermaid
 graph LR
     A[TikTok Videos] --> B[Metadata Extraction]
-    B --> C[S3 Storage]
+    B --> C[Metadata Storage]
     C --> D[Video Transcription]
     D --> E[Transcript Storage]
     E --> F[Text Analysis]
-    F --> G[Analysis Results]
+    F --> G[Analysis Storage]
 ```
 
 ## Contributing

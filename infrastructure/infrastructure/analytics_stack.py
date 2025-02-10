@@ -11,11 +11,13 @@ from aws_cdk import (
     CfnOutput,
     RemovalPolicy,
     Fn,
-    aws_secretsmanager as secretsmanager
+    aws_secretsmanager as secretsmanager,
+    aws_glue as glue
 )
 from constructs import Construct
 from aws_cdk.aws_lambda import Function as LambdaFunction
 from aws_cdk.aws_s3 import Bucket as S3Bucket
+import boto3
 
 class AnalyticsStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
@@ -307,22 +309,43 @@ class AnalyticsStack(Stack):
             timeout = Duration.minutes(1)
         )
         
-        # Add permissions for Lambda to submit Batch jobs
+        # Add permissions for Lambda to submit Batch jobs and use Athena/Glue
         metadata_trigger.add_to_role_policy(iam.PolicyStatement(
             effect = iam.Effect.ALLOW,
-            actions = ["batch:SubmitJob"],
+            actions = [
+                "batch:SubmitJob",
+                "athena:StartQueryExecution",
+                "athena:GetQueryExecution",
+                "athena:GetWorkGroup",
+                "s3:ListBucket",
+                "s3:GetBucketLocation",
+                "glue:GetDatabase",
+                "glue:GetTable",
+                "glue:GetPartition",
+                "glue:GetPartitions",
+                "glue:BatchCreatePartition"
+            ],
             resources = [
                 f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-queue/{gpu_job_queue.job_queue_name}",
-                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-definition/tiktok-transcriber-job*",
-                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-definition/{transcription_job_definition.job_definition_name}:*"
+                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-definition/{transcription_job_definition.job_definition_name}:*",
+                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:catalog",
+                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/tiktok_analytics",
+                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/tiktok_analytics/*",
+                "*"  # For Athena permissions
             ]
         ))
         
-        # Add S3 read permissions for the Lambda
+        # Add S3 permissions for Lambda
         metadata_trigger.add_to_role_policy(iam.PolicyStatement(
             effect = iam.Effect.ALLOW,
-            actions = ["s3:GetObject"],
+            actions = [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:ListBucket",
+                "s3:GetBucketLocation"
+            ],
             resources = [
+                "arn:aws:s3:::tiktoktrends",  # Add bucket-level permissions
                 "arn:aws:s3:::tiktoktrends/*"
             ]
         ))
@@ -371,9 +394,174 @@ class AnalyticsStack(Stack):
         bucket.add_event_notification(
             s3.EventType.OBJECT_CREATED, 
             s3n.LambdaDestination(transcript_trigger),
-            s3.NotificationKeyFilter(prefix="videos/transcripts/")
+            s3.NotificationKeyFilter(prefix = "videos/transcripts/")
         )
 
+        # Create Glue Database
+        database = glue.CfnDatabase(self, "TiktokAnalyticsDB",
+            catalog_id = self.account,
+            database_input = glue.CfnDatabase.DatabaseInputProperty(
+                name = "tiktok_analytics",
+                description = "Database for TikTok video analytics"
+            )
+        )
+
+        # Create Metadata Table
+        metadata_table = glue.CfnTable(self, "TiktokMetadataTable",
+            catalog_id = self.account,
+            database_name = database.ref,
+            table_input = glue.CfnTable.TableInputProperty(
+                name = "metadata",
+                description = "TikTok video metadata",
+                parameters = {
+                    "classification": "parquet",
+                    "has_encrypted_data": "false",
+                    "EXTERNAL": "TRUE",
+                    "typeOfData": "file",
+                    "input.format": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+                    "output.format": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+                    "serde.serialization.lib": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+                },
+                storage_descriptor = glue.CfnTable.StorageDescriptorProperty(
+                    location = "s3://tiktoktrends/videos/metadata",
+                    input_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+                    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+                    columns=[
+                        glue.CfnTable.ColumnProperty(name = "id", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "title", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "description", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "upload_date", type = "bigint"),
+                        glue.CfnTable.ColumnProperty(name = "like_count", type = "bigint"),
+                        glue.CfnTable.ColumnProperty(name = "repost_count", type = "bigint"),
+                        glue.CfnTable.ColumnProperty(name = "comment_count", type = "bigint"),
+                        glue.CfnTable.ColumnProperty(name = "view_count", type = "bigint"),
+                        glue.CfnTable.ColumnProperty(name = "duration", type = "bigint"),
+                        glue.CfnTable.ColumnProperty(name = "webpage_url", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "channel", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "timestamp", type = "bigint"),
+                        glue.CfnTable.ColumnProperty(name = "track", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "artists", type = "array<string>"),
+                        glue.CfnTable.ColumnProperty(name = "artist", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "uploader", type = "string")
+                    ],
+                    serde_info = glue.CfnTable.SerdeInfoProperty(
+                        serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+                        parameters = {
+                            "serialization.format": "1"
+                        }
+                    )
+                ),
+                partition_keys = [
+                    glue.CfnTable.ColumnProperty(name = "profile", type = "string"),
+                    glue.CfnTable.ColumnProperty(name = "processed_at", type = "string")
+                ]
+            )
+        )
+
+        # Create Text Analysis Table
+        text_table = glue.CfnTable(self, "TiktokTextTable",
+            catalog_id = self.account,
+            database_name = database.ref,
+            table_input = glue.CfnTable.TableInputProperty(
+                name = "text_analysis",
+                description = "TikTok video text analysis",
+                parameters = {
+                    "classification": "parquet",
+                    "has_encrypted_data": "false",
+                    "EXTERNAL": "TRUE",
+                    "typeOfData": "file",
+                    "input.format": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+                    "output.format": "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+                    "serde.serialization.lib": "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
+                },
+                storage_descriptor = glue.CfnTable.StorageDescriptorProperty(
+                    location = "s3://tiktoktrends/videos/text",
+                    input_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+                    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+                    columns=[
+                        glue.CfnTable.ColumnProperty(name = "id", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "uploader", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "description", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "title", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "transcript", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "language", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "category", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "summary", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "keywords", type = "array<string>")
+                    ],
+                    serde_info = glue.CfnTable.SerdeInfoProperty(
+                        serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+                        parameters = {
+                            "serialization.format": "1"
+                        }
+                    )
+                ),
+                partition_keys = [
+                    glue.CfnTable.ColumnProperty(name = "profile", type = "string"),
+                    glue.CfnTable.ColumnProperty(name = "processed_at", type = "string")
+                ]
+            )
+        )
+
+        # Add dependencies
+        metadata_table.add_dependency(database)
+        text_table.add_dependency(database)
+
+        # Create text partition handler Lambda
+        text_trigger = LambdaFunction(self, "TextTriggerFunction",
+            runtime = lambda_.Runtime.PYTHON_3_9,
+            handler = "index.handler",
+            code = lambda_.Code.from_asset("infrastructure/lambda/text_trigger"),
+            timeout = Duration.minutes(5)
+        )
+        
+        # Add Athena/Glue permissions for text trigger
+        text_trigger.add_to_role_policy(iam.PolicyStatement(
+            effect = iam.Effect.ALLOW,
+            actions = [
+                "athena:StartQueryExecution",
+                "athena:GetQueryExecution",
+                "athena:GetWorkGroup",
+                "s3:ListBucket",
+                "s3:GetBucketLocation",
+                "glue:GetDatabase",
+                "glue:GetTable",
+                "glue:GetPartition",
+                "glue:GetPartitions",
+                "glue:BatchCreatePartition"
+            ],
+            resources = [
+                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:catalog",
+                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/tiktok_analytics",
+                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/tiktok_analytics/*",
+                "*"  # For Athena permissions
+            ]
+        ))
+        
+        # Add S3 permissions for text trigger
+        text_trigger.add_to_role_policy(iam.PolicyStatement(
+            effect = iam.Effect.ALLOW,
+            actions = [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:ListBucket",
+                "s3:GetBucketLocation"
+            ],
+            resources = [
+                "arn:aws:s3:::tiktoktrends",  # Add bucket-level permissions
+                "arn:aws:s3:::tiktoktrends/*"
+            ]
+        ))
+        
+        # Add S3 trigger for text analysis files
+        bucket.add_event_notification(
+            s3.EventType.OBJECT_CREATED, 
+            s3n.LambdaDestination(text_trigger),
+            s3.NotificationKeyFilter(
+                prefix = "videos/text/",
+            )
+        )
+        
         # Add outputs
         CfnOutput(self, "MetadataRepositoryUri",
             value = metadata_repository.repository_uri,

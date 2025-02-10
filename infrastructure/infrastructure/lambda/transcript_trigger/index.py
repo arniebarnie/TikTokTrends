@@ -18,7 +18,7 @@ def create_valid_job_name(key: str) -> str:
     try:
         # Find the profile part
         for part in parts:
-            if part.startswith('PROFILE='):
+            if part.startswith('profile='):
                 profile = part.split('=')[1]
                 break
         else:
