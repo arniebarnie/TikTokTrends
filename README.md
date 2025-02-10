@@ -31,8 +31,8 @@ This project implements a scalable data pipeline for analyzing TikTok videos usi
    - Stores transcripts in S3
 
 3. **Text Analysis**
-   - Analyzes transcripts using OpenAI GPT
-   - Extracts categories, summaries, and keywords
+   - Triggered automatically when new transcripts arrives
+   - Extracts categories, summaries, and keywords from transcripts and metadata using OpenAI GPT
    - Runs on AWS Batch Fargate containers
    - Stores analysis results in S3
 
@@ -115,11 +115,11 @@ cdk deploy --all
 ```mermaid
 graph LR
     A[TikTok Videos] --> B[Metadata Extraction]
-    B --> C[S3 Storage]
+    B --> C[Metadata Storage]
     C --> D[Video Transcription]
     D --> E[Transcript Storage]
     E --> F[Text Analysis]
-    F --> G[Analysis Results]
+    F --> G[Analysis Storage]
 ```
 
 ## Contributing
