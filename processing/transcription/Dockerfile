@@ -30,4 +30,4 @@ RUN echo 'import torch; \
     torch.backends.cudnn.allow_tf32 = True' > /root/.pytorch_startup.py
 ENV PYTHONSTARTUP=/root/.pytorch_startup.py
 
-ENTRYPOINT ["python", "-m", "ingestion.main"] 
+ENTRYPOINT ["python", "main.py"] 

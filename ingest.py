@@ -21,7 +21,7 @@ def split_profiles(profile_file: str, num_containers: int) -> list[list[str]]:
     return profile_groups
 
 def submit_batch_job(profile_group: list[str], job_queue: str, job_definition: str) -> str:
-    """Submit a job to AWS Batch."""
+    """Submit a metadata collection job to AWS Batch."""
     batch_client = boto3.client('batch')
     
     # Create temporary profiles file in S3
@@ -38,7 +38,7 @@ def submit_batch_job(profile_group: list[str], job_queue: str, job_definition: s
     
     # Submit the batch job
     response = batch_client.submit_job(
-        jobName=f'tiktok-transcriber-{job_id}',
+        jobName=f'tiktok-metadata-{job_id}',
         jobQueue=job_queue,
         jobDefinition=job_definition,
         containerOverrides={
@@ -58,7 +58,7 @@ def submit_batch_job(profile_group: list[str], job_queue: str, job_definition: s
     return response['jobId']
 
 def main():
-    parser = argparse.ArgumentParser(description='Launch TikTok transcriber batch jobs')
+    parser = argparse.ArgumentParser(description='Launch TikTok metadata collection batch jobs')
     parser.add_argument('profile_file', type=str, help='Path to profiles.txt')
     parser.add_argument('num_containers', type=int, help='Number of containers to run')
     args = parser.parse_args()
@@ -67,17 +67,17 @@ def main():
     profile_groups = split_profiles(args.profile_file, args.num_containers)
     
     # Get job queue and definition names from environment or config
-    job_queue = 'tiktok-transcriber-queue'
-    job_definition = 'tiktok-transcriber-job'
+    job_queue = 'tiktok-fargate-queue'  # Changed to use Fargate queue
+    job_definition = 'tiktok-metadata-job'  # Changed to use metadata job definition
     
     # Submit jobs
     job_ids = []
     for group in profile_groups:
         job_id = submit_batch_job(group, job_queue, job_definition)
         job_ids.append(job_id)
-        print(f"Submitted batch job {job_id} with {len(group)} profiles")
+        print(f"Submitted metadata job {job_id} with {len(group)} profiles")
     
-    print(f"\nSubmitted {len(job_ids)} jobs")
+    print(f"\nSubmitted {len(job_ids)} metadata collection jobs")
     print("Job IDs:", job_ids)
 
 if __name__ == '__main__':

@@ -1,65 +1,58 @@
-name: Deploy CDK App
+name: Deploy TikTok Analytics
 
 on:
   push:
     branches:
       - prod
-  workflow_dispatch:
-    inputs:
-      stack:
-        description: 'Stack to deploy (analytics/dashboard/all)'
-        required: true
-        default: 'all'
-        type: choice
-        options:
-          - analytics
-          - dashboard
-          - all
+
+env:
+  AWS_REGION: us-east-1
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-          
-      - name: Configure AWS Credentials
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-          
-      - name: Install dependencies
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install CDK dependencies
+        working-directory: ./infrastructure
         run: |
-          cd infrastructure
+          npm install -g aws-cdk
           pip install -r requirements.txt
-          
-      - name: Build Lambda packages
-        if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.stack == 'dashboard' || github.event.inputs.stack == 'all') }}
-        run: |
-          cd infrastructure/lambda/query
-          python build.py
-          
-      - name: Deploy CDK app
-        run: |
-          cd infrastructure
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            echo "Deploying Analytics stack only (push to prod)..."
-            cdk deploy TiktokAnalyticsStack --require-approval never
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            if [[ "${{ github.event.inputs.stack }}" == "analytics" ]]; then
-              echo "Deploying Analytics stack..."
-              cdk deploy TiktokAnalyticsStack --require-approval never
-            elif [[ "${{ github.event.inputs.stack }}" == "dashboard" ]]; then
-              echo "Deploying Dashboard stack..."
-              cdk deploy TiktokDashboardStack --require-approval never
-            elif [[ "${{ github.event.inputs.stack }}" == "all" ]]; then
-              echo "Deploying all stacks..."
-              cdk deploy --all --require-approval never
-            fi
-          fi 
+
+      - name: Deploy CDK Stack
+        working-directory: ./infrastructure
+        run: cdk deploy TiktokAnalyticsStack --require-approval never
+
+      - name: Build Metadata Container
+        working-directory: ./ingestion/metadata
+        run: ./build.sh
+
+      - name: Build Transcription Container
+        working-directory: ./processing/transcription
+        run: ./build.sh
+
+      - name: Build Text Analysis Container
+        working-directory: ./processing/text
+        run: ./build.sh

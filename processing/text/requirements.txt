@@ -1,4 +1,5 @@
 pandas
 boto3
 openai
-pyarrow 
+pyarrow
+s3fs

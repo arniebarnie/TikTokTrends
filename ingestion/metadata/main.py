@@ -3,9 +3,59 @@ import json
 import yt_dlp
 import pandas as pd
 from datetime import datetime
-from typing import Union, Optional
+from typing import Optional
+import tempfile
+import shutil
+import boto3
+import os
+import logging
 
-from .config import CONFIG, LOGGER
+# Configure logging
+logging.basicConfig(level = logging.INFO)
+LOGGER = logging.getLogger(__name__)
+
+class Config:
+    def __init__(self):
+        # AWS Configuration
+        self.s3_bucket = os.getenv('S3_BUCKET', 'tiktoktrends')
+        self.s3_prefix = 'videos/metadata'
+        self.profiles_s3_key = os.getenv('PROFILES_S3_KEY')
+        
+        # Local paths
+        self.workspace = Path("/workspace")
+        self.download_dir = self.workspace / "downloads"
+        
+CONFIG = Config()
+
+s3_client = boto3.client('s3')
+
+def setup_directories():
+    CONFIG.download_dir.mkdir(parents = True, exist_ok = True)
+
+def read_profiles(profile_file: str) -> list[str]:
+    with open(profile_file, 'r') as f:
+        return [line.strip() for line in f if line.strip()]
+
+def read_profiles_from_s3(profile_s3_key: str) -> list[str]:
+    response = s3_client.get_object(Bucket = CONFIG.s3_bucket, Key = profile_s3_key)
+    return [line.strip() for line in response['Body'].read().decode('utf-8').splitlines() if line.strip()]
+
+def upload_to_s3(df: pd.DataFrame, key: str):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir) / 'data.parquet'
+        df.to_parquet(temp_path)
+        s3_client.upload_file(str(temp_path), CONFIG.s3_bucket, key)
+
+def check_last_processed_at(profile: str) -> datetime:
+    key = f"{CONFIG.s3_prefix}/PROFILE={profile}/PROCESSED_AT="
+    response = s3_client.list_objects_v2(Bucket = CONFIG.s3_bucket, Prefix = key)
+    if 'Contents' in response:
+        last_processed_at = max(
+            datetime.strptime(obj['Key'].split('PROCESSED_AT=')[1].split('/')[0], '%Y-%m-%d %H:%M:%S') 
+            for obj in response['Contents']
+        )
+        return last_processed_at
+    return None
 
 class VideoMetadata:
     def __init__(self):
@@ -14,6 +64,7 @@ class VideoMetadata:
             'no_warnings': True,
             'writeinfojson': True,
             'skip_download': True,
+            'ignoreerrors': True,
             'outtmpl': str(CONFIG.download_dir) + '/%(uploader)s/%(id)s.%(ext)s',
             'extractor_args': {
                 'tiktok': {
@@ -23,7 +74,7 @@ class VideoMetadata:
                 }
             }
         }
-
+    
     def download_metadata(self, profile: str) -> Optional[Path]:
         """
         Download metadata for all videos from a TikTok profile.
@@ -53,7 +104,7 @@ class VideoMetadata:
         except Exception as e:
             LOGGER.error(f'Error downloading metadata for {profile}: {e}')
             return None
-
+    
     def extract_video_metadata(self, info_path: Path) -> dict:
         """
         Extract relevant metadata from a video's info.json file.
@@ -94,7 +145,7 @@ class VideoMetadata:
         except Exception as e:
             LOGGER.error(f'Error extracting metadata from {info_path}: {e}')
             return {}
-
+        
     def get_profile_metadata(self, profile: str) -> Optional[pd.DataFrame]:
         """
         Get metadata for all videos from a profile.
@@ -126,9 +177,55 @@ class VideoMetadata:
             # Create DataFrame
             df = pd.DataFrame(video_data)
             
-            
             return df
 
         except Exception as e:
             LOGGER.error(f'Error processing metadata for {profile}: {e}')
             return None
+
+def main():
+    setup_directories()
+    
+    if CONFIG.profiles_s3_key:
+        profiles = read_profiles_from_s3(CONFIG.profiles_s3_key)
+    else:
+        profiles = ['noonessafe_pranks', 'batfurai']
+    
+    for profile in profiles:
+        try:
+            LOGGER.info(f'Downloading metadata for {profile}...')
+            video_metadata = VideoMetadata().get_profile_metadata(profile)
+            if video_metadata is None:
+                LOGGER.error(f"No metadata found for profile: {profile}")
+                continue
+            
+            last_processed_at = check_last_processed_at(profile)
+            if last_processed_at:
+                LOGGER.info(f"{profile}: Last processed at: {last_processed_at}")
+                video_metadata = video_metadata[video_metadata['upload_date'] > last_processed_at]
+            else:
+                LOGGER.info(f"No previous processing found for profile: {profile}")
+            
+            if len(video_metadata) == 0:
+                LOGGER.error(f"No new metadata found for profile: {profile}")
+                continue
+            
+            # Save metadata and transcripts to S3
+            LOGGER.info(f"Uploading data to S3 for {profile}...")
+            current_time = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+            upload_to_s3(
+                video_metadata, 
+                f"{CONFIG.s3_prefix}/PROFILE={profile}/PROCESSED_AT={current_time}/metadata.parquet"
+            )
+            
+        except Exception as e:
+            LOGGER.error(f"Error processing profile: {profile}")
+            LOGGER.error(f"Error: {e}")
+        finally:
+            # Cleanup profile directory
+            profile_dir = CONFIG.download_dir / profile
+            if profile_dir.exists():
+                shutil.rmtree(profile_dir)
+
+if __name__ == "__main__":
+    main()

@@ -4,12 +4,18 @@ from aws_cdk import (
     aws_iam as iam,
     aws_ecr as ecr,
     aws_batch as batch,
+    aws_lambda as lambda_,
+    aws_s3 as s3,
+    aws_s3_notifications as s3n,
     Duration,
     CfnOutput,
     RemovalPolicy,
-    Fn
+    Fn,
+    aws_secretsmanager as secretsmanager
 )
 from constructs import Construct
+from aws_cdk.aws_lambda import Function as LambdaFunction
+from aws_cdk.aws_s3 import Bucket as S3Bucket
 
 class AnalyticsStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
@@ -17,38 +23,49 @@ class AnalyticsStack(Stack):
 
         # Create VPC
         self.vpc = ec2.Vpc(self, "TikTokAnalyticsVPC",
-            max_azs=2,
-            subnet_configuration=[
+            max_azs = 2,
+            nat_gateways = 1,
+            subnet_configuration = [
                 ec2.SubnetConfiguration(
-                    name="Public",
-                    subnet_type=ec2.SubnetType.PUBLIC,
-                    cidr_mask=24
+                    name = "Public",
+                    subnet_type = ec2.SubnetType.PUBLIC,
+                    cidr_mask = 24
                 ),
                 ec2.SubnetConfiguration(
-                    name="Private",
-                    subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS,
-                    cidr_mask=24
+                    name = "Private",
+                    subnet_type = ec2.SubnetType.PRIVATE_WITH_EGRESS,
+                    cidr_mask = 24
                 )
             ]
         )
 
-        # Create ECR Repository
-        repository = ecr.Repository(self, "TiktokTranscriberRepo",
-            repository_name="tiktok-transcriber",
-            removal_policy=RemovalPolicy.DESTROY
+        # Create ECR Repositories
+        metadata_repository = ecr.Repository(self, "TiktokMetadataRepo",
+            repository_name = "tiktok-metadata",
+            removal_policy = RemovalPolicy.DESTROY
+        )
+
+        transcription_repository = ecr.Repository(self, "TiktokTranscriberRepo",
+            repository_name = "tiktok-transcriber",
+            removal_policy = RemovalPolicy.DESTROY
+        )
+
+        text_analysis_repository = ecr.Repository(self, "TiktokTextAnalysisRepo",
+            repository_name = "tiktok-text-analysis",
+            removal_policy = RemovalPolicy.DESTROY
         )
 
         # Create IAM role for Batch
-        batch_service_role = iam.Role(self, "BatchServiceRole",
-            assumed_by=iam.ServicePrincipal("batch.amazonaws.com")
+        self.batch_service_role = iam.Role(self, "BatchServiceRole",
+            assumed_by = iam.ServicePrincipal("batch.amazonaws.com")
         )
-        batch_service_role.add_managed_policy(
+        self.batch_service_role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSBatchServiceRole")
         )
 
         # Create IAM role for container instances
         instance_role = iam.Role(self, "BatchInstanceRole",
-            assumed_by=iam.ServicePrincipal("ec2.amazonaws.com")
+            assumed_by = iam.ServicePrincipal("ec2.amazonaws.com")
         )
         instance_role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AmazonEC2ContainerServiceforEC2Role")
@@ -56,8 +73,8 @@ class AnalyticsStack(Stack):
 
         # Add EBS permissions
         instance_role.add_to_policy(iam.PolicyStatement(
-            effect=iam.Effect.ALLOW,
-            actions=[
+            effect = iam.Effect.ALLOW,
+            actions = [
                 "ec2:AttachVolume",
                 "ec2:CreateVolume",
                 "ec2:DeleteVolume",
@@ -66,18 +83,18 @@ class AnalyticsStack(Stack):
                 "ec2:DetachVolume",
                 "ec2:ModifyVolume"
             ],
-            resources=["*"]
+            resources = ["*"]
         ))
 
         # S3 permissions
         instance_role.add_to_policy(iam.PolicyStatement(
-            effect=iam.Effect.ALLOW,
-            actions=[
+            effect = iam.Effect.ALLOW,
+            actions = [
                 "s3:GetObject",
                 "s3:PutObject",
                 "s3:ListBucket"
             ],
-            resources=[
+            resources = [
                 "arn:aws:s3:::tiktoktrends",
                 "arn:aws:s3:::tiktoktrends/*"
             ]
@@ -85,19 +102,19 @@ class AnalyticsStack(Stack):
 
         # Create instance profile
         instance_profile = iam.CfnInstanceProfile(self, "BatchInstanceProfile",
-            roles=[instance_role.role_name]
+            roles = [instance_role.role_name]
         )
 
         # Create security group for compute environment
-        security_group = ec2.SecurityGroup(self, "BatchSecurityGroup",
-            vpc=self.vpc,
-            description="Security group for AWS Batch Compute Environment",
-            allow_all_outbound=True
+        self.security_group = ec2.SecurityGroup(self, "BatchSecurityGroup",
+            vpc = self.vpc,
+            description = "Security group for AWS Batch Compute Environment",
+            allow_all_outbound = True
         )
 
         # Create launch template first
         launch_template = ec2.CfnLaunchTemplate(self, "BatchLaunchTemplate",
-            launch_template_data={
+            launch_template_data = {
                 "blockDeviceMappings": [
                     {
                         "deviceName": "/dev/xvda",
@@ -131,50 +148,89 @@ class AnalyticsStack(Stack):
             }
         )
 
-        # Create Batch compute environment
-        compute_environment = batch.CfnComputeEnvironment(self, "BatchComputeEnv",
-            compute_environment_name=f"BatchComputeEnv-2",
-            type="MANAGED",
-            compute_resources={
-                "type": "SPOT",
-                "maxvCpus": 4 * 3,
-                "minvCpus": 0,
-                "desiredvCpus": 0,
-                "instanceTypes": ["g4dn.xlarge"],
-                "subnets": [subnet.subnet_id for subnet in self.vpc.public_subnets],
-                "instanceRole": instance_profile.attr_arn,
-                "securityGroupIds": [security_group.security_group_id],
-                "allocationStrategy": "SPOT_CAPACITY_OPTIMIZED",
-                "launchTemplate": {
-                    "launchTemplateId": launch_template.ref,
-                    "version": "$Latest"
-                },
-                "spotIamFleetRole": iam.Role(self, "SpotFleetRole",
-                    assumed_by=iam.ServicePrincipal("spotfleet.amazonaws.com"),
-                    managed_policies=[
-                        iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AmazonEC2SpotFleetTaggingRole")
-                    ]
-                ).role_arn
-            },
-            service_role=batch_service_role.role_arn,
-            state="ENABLED"
+        # Create Fargate execution role
+        fargate_execution_role = iam.Role(self, "FargateExecutionRole",
+            assumed_by = iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+            managed_policies = [
+                iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AmazonECSTaskExecutionRolePolicy")
+            ]
         )
 
-        # Create job queue
-        job_queue = batch.CfnJobQueue(self, "BatchJobQueue",
-            compute_environment_order=[{
-                "computeEnvironment": compute_environment.ref,
+        # Create Fargate task role
+        fargate_task_role = iam.Role(self, "FargateTaskRole",
+            assumed_by = iam.ServicePrincipal("ecs-tasks.amazonaws.com")
+        )
+
+        # Add S3 permissions to task role
+        fargate_task_role.add_to_policy(iam.PolicyStatement(
+            effect = iam.Effect.ALLOW,
+            actions = [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:ListBucket"
+            ],
+            resources = [
+                "arn:aws:s3:::tiktoktrends",
+                "arn:aws:s3:::tiktoktrends/*"
+            ]
+        ))
+
+        # Create Fargate job queue
+        fargate_job_queue = batch.CfnJobQueue(self, "FargateJobQueue",
+            compute_environment_order = [{
+                "computeEnvironment": self.create_fargate_compute_environment().ref,
                 "order": 1
             }],
-            priority=1,
-            job_queue_name="tiktok-transcriber-queue"
+            priority = 1,
+            job_queue_name = "tiktok-fargate-queue"
         )
 
-        # Create job definition
-        job_definition = batch.CfnJobDefinition(self, "BatchJobDefinition",
-            type="container",
-            container_properties={
-                "image": f"{repository.repository_uri}:latest",
+        # Create GPU job queue
+        gpu_job_queue = batch.CfnJobQueue(self, "GPUJobQueue",
+            compute_environment_order = [{
+                "computeEnvironment": self.create_gpu_compute_environment(
+                    instance_profile, self.security_group, launch_template, self.batch_service_role
+                ).ref,
+                "order": 1
+            }],
+            priority = 1,
+            job_queue_name = "tiktok-gpu-queue"
+        )
+
+        # Create secret for OpenAI API key
+        openai_secret = secretsmanager.Secret(self, "OpenAISecret",
+            secret_name = "tiktok/openai-api-key",
+            description = "OpenAI API Key for TikTok text analysis"
+        )
+
+        # Create job definitions
+        metadata_job_definition = batch.CfnJobDefinition(self, "MetadataJobDefinition",
+            type = "container",
+            platform_capabilities = ["FARGATE"],
+            container_properties = {
+                "image": f"{metadata_repository.repository_uri}:latest",
+                "command": ["python3", "main.py"],
+                "environment": [],
+                "resourceRequirements": [
+                    {"type": "VCPU", "value": "2"},
+                    {"type": "MEMORY", "value": "4096"}
+                ],
+                "executionRoleArn": fargate_execution_role.role_arn,
+                "jobRoleArn": fargate_task_role.role_arn,
+                "networkConfiguration": {
+                    "assignPublicIp": "ENABLED"
+                }
+            },
+            job_definition_name = "tiktok-metadata-job",
+            timeout = {
+                "attemptDurationSeconds": 3600
+            }
+        )
+
+        transcription_job_definition = batch.CfnJobDefinition(self, "TranscriptionJobDefinition",
+            type = "container",
+            container_properties = {
+                "image": f"{transcription_repository.repository_uri}:latest",
                 "command": ["python3", "main.py"],
                 "environment": [],
                 "resourceRequirements": [
@@ -198,24 +254,209 @@ class AnalyticsStack(Stack):
                     }
                 ],
             },
-            job_definition_name="tiktok-transcriber-job",
-            timeout={
+            job_definition_name = "tiktok-transcriber-job",
+            timeout = {
                 "attemptDurationSeconds": 60 * 60 * 24
             }
         )
 
+        text_analysis_job_definition = batch.CfnJobDefinition(self, "TextAnalysisJobDefinition",
+            type = "container",
+            platform_capabilities = ["FARGATE"],
+            container_properties = {
+                "image": f"{text_analysis_repository.repository_uri}:latest",
+                "command": ["python3", "main.py"],
+                "environment": [
+                    {
+                        "name": "OPENAI_SECRET_ARN",
+                        "value": openai_secret.secret_arn
+                    }
+                ],
+                "resourceRequirements": [
+                    {"type": "VCPU", "value": "2"},
+                    {"type": "MEMORY", "value": "4096"}
+                ],
+                "executionRoleArn": fargate_execution_role.role_arn,
+                "jobRoleArn": fargate_task_role.role_arn,
+                "networkConfiguration": {
+                    "assignPublicIp": "ENABLED"
+                }
+            },
+            job_definition_name = "tiktok-text-analysis-job",
+            timeout = {
+                "attemptDurationSeconds": 3600
+            }
+        )
+
+        # Add permissions to text analysis job to read secret
+        fargate_task_role.add_to_policy(iam.PolicyStatement(
+            effect = iam.Effect.ALLOW,
+            actions = ["secretsmanager:GetSecretValue"],
+            resources = [openai_secret.secret_arn]
+        ))
+
+        # Create Lambda function for triggering transcription jobs
+        metadata_trigger = LambdaFunction(self, "MetadataTriggerFunction",
+            runtime = lambda_.Runtime.PYTHON_3_9,
+            handler = "index.handler",
+            code = lambda_.Code.from_asset("infrastructure/lambda/metadata_trigger"),
+            environment = {
+                "GPU_JOB_QUEUE": gpu_job_queue.job_queue_name,
+                "TRANSCRIBER_JOB_DEFINITION": transcription_job_definition.job_definition_name,
+            },
+            timeout = Duration.minutes(1)
+        )
+        
+        # Add permissions for Lambda to submit Batch jobs
+        metadata_trigger.add_to_role_policy(iam.PolicyStatement(
+            effect = iam.Effect.ALLOW,
+            actions = ["batch:SubmitJob"],
+            resources = [
+                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-queue/{gpu_job_queue.job_queue_name}",
+                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-definition/tiktok-transcriber-job*",
+                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-definition/{transcription_job_definition.job_definition_name}:*"
+            ]
+        ))
+        
+        # Add S3 read permissions for the Lambda
+        metadata_trigger.add_to_role_policy(iam.PolicyStatement(
+            effect = iam.Effect.ALLOW,
+            actions = ["s3:GetObject"],
+            resources = [
+                "arn:aws:s3:::tiktoktrends/*"
+            ]
+        ))
+
+        # Add S3 trigger for the Lambda
+        bucket = S3Bucket.from_bucket_name(self, "TiktokBucket", "tiktoktrends")
+        bucket.add_event_notification(
+            s3.EventType.OBJECT_CREATED, 
+            s3n.LambdaDestination(metadata_trigger),
+            s3.NotificationKeyFilter(prefix="videos/metadata/")
+        )
+
+        # Create Lambda function for triggering text analysis jobs
+        transcript_trigger = LambdaFunction(self, "TranscriptTriggerFunction",
+            runtime = lambda_.Runtime.PYTHON_3_9,
+            handler = "index.handler",
+            code = lambda_.Code.from_asset("infrastructure/lambda/transcript_trigger"),
+            environment = {
+                "FARGATE_JOB_QUEUE": fargate_job_queue.job_queue_name,
+                "TEXT_ANALYSIS_JOB_DEFINITION": text_analysis_job_definition.job_definition_name,
+            },
+            timeout = Duration.minutes(1)
+        )
+        
+        # Add permissions for Lambda to submit Batch jobs
+        transcript_trigger.add_to_role_policy(iam.PolicyStatement(
+            effect = iam.Effect.ALLOW,
+            actions = ["batch:SubmitJob"],
+            resources = [
+                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-queue/{fargate_job_queue.job_queue_name}",
+                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-definition/tiktok-text-analysis-job",
+                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-definition/{text_analysis_job_definition.job_definition_name}:*"
+            ]
+        ))
+        
+        # Add S3 read permissions for the Lambda
+        transcript_trigger.add_to_role_policy(iam.PolicyStatement(
+            effect = iam.Effect.ALLOW,
+            actions = ["s3:GetObject"],
+            resources = [
+                "arn:aws:s3:::tiktoktrends/*"
+            ]
+        ))
+
+        # Add S3 trigger for transcript uploads
+        bucket.add_event_notification(
+            s3.EventType.OBJECT_CREATED, 
+            s3n.LambdaDestination(transcript_trigger),
+            s3.NotificationKeyFilter(prefix="videos/transcripts/")
+        )
+
         # Add outputs
-        CfnOutput(self, "JobQueueName",
-            value=job_queue.job_queue_name,
-            description="The name of the job queue"
+        CfnOutput(self, "MetadataRepositoryUri",
+            value = metadata_repository.repository_uri,
+            description = "The URI of the metadata ECR repository"
+        )
+        
+        CfnOutput(self, "TranscriberRepositoryUri",
+            value = transcription_repository.repository_uri,
+            description = "The URI of the transcriber ECR repository"
+        )
+        
+        CfnOutput(self, "TextAnalysisRepositoryUri",
+            value = text_analysis_repository.repository_uri,
+            description = "The URI of the text analysis ECR repository"
         )
 
-        CfnOutput(self, "JobDefinitionName",
-            value=job_definition.job_definition_name,
-            description="The name of the job definition"
+        CfnOutput(self, "FargateJobQueueName",
+            value = fargate_job_queue.job_queue_name,
+            description = "The name of the Fargate job queue"
         )
 
-        CfnOutput(self, "RepositoryUri",
-            value=repository.repository_uri,
-            description="The URI of the ECR repository"
+        CfnOutput(self, "GPUJobQueueName",
+            value = gpu_job_queue.job_queue_name,
+            description = "The name of the GPU job queue"
+        )
+
+        CfnOutput(self, "MetadataJobDefinitionName",
+            value = metadata_job_definition.job_definition_name,
+            description = "The name of the metadata job definition"
+        )
+
+        CfnOutput(self, "TranscriberJobDefinitionName",
+            value = transcription_job_definition.job_definition_name,
+            description = "The name of the transcriber job definition"
+        )
+
+        CfnOutput(self, "TextAnalysisJobDefinitionName",
+            value = text_analysis_job_definition.job_definition_name,
+            description = "The name of the text analysis job definition"
+        )
+
+        CfnOutput(self, "OpenAISecretArn",
+            value = openai_secret.secret_arn,
+            description = "The ARN of the OpenAI API key secret"
+        )
+
+    def create_fargate_compute_environment(self):
+        return batch.CfnComputeEnvironment(self, "FargateComputeEnv",
+            type = "MANAGED",
+            compute_resources = {
+                "type": "FARGATE",
+                "maxvCpus": 8,
+                "subnets": [subnet.subnet_id for subnet in self.vpc.private_subnets],
+                "securityGroupIds": [self.security_group.security_group_id],
+            },
+            service_role = self.batch_service_role.role_arn,
+            state = "ENABLED"
+        )
+
+    def create_gpu_compute_environment(self, instance_profile, security_group, launch_template, batch_service_role):
+        return batch.CfnComputeEnvironment(self, "GPUComputeEnv",
+            type="MANAGED",
+            compute_resources = {
+                "type": "SPOT",
+                "maxvCpus": 4 * 3,
+                "minvCpus": 0,
+                "desiredvCpus": 0,
+                "instanceTypes": ["g4dn.xlarge"],
+                "subnets": [subnet.subnet_id for subnet in self.vpc.public_subnets],
+                "instanceRole": instance_profile.attr_arn,
+                "securityGroupIds": [security_group.security_group_id],
+                "allocationStrategy": "SPOT_CAPACITY_OPTIMIZED",
+                "launchTemplate": {
+                    "launchTemplateId": launch_template.ref,
+                    "version": "$Latest"
+                },
+                "spotIamFleetRole": iam.Role(self, "SpotFleetRole",
+                    assumed_by = iam.ServicePrincipal("spotfleet.amazonaws.com"),
+                    managed_policies = [
+                        iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AmazonEC2SpotFleetTaggingRole")
+                    ]
+                ).role_arn
+            },
+            service_role = batch_service_role.role_arn,
+            state="ENABLED"
         ) 
