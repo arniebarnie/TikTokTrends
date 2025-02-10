@@ -11,7 +11,8 @@ from aws_cdk import (
     CfnOutput,
     RemovalPolicy,
     Fn,
-    aws_secretsmanager as secretsmanager
+    aws_secretsmanager as secretsmanager,
+    aws_glue as glue
 )
 from constructs import Construct
 from aws_cdk.aws_lambda import Function as LambdaFunction
@@ -373,6 +374,114 @@ class AnalyticsStack(Stack):
             s3n.LambdaDestination(transcript_trigger),
             s3.NotificationKeyFilter(prefix="videos/transcripts/")
         )
+
+        # Create Glue Database
+        database = glue.CfnDatabase(self, "TiktokAnalyticsDB",
+            catalog_id=self.account,
+            database_input=glue.CfnDatabase.DatabaseInputProperty(
+                name="tiktok_analytics",
+                description="Database for TikTok video analytics"
+            )
+        )
+
+        # Create Metadata Table
+        metadata_table = glue.CfnTable(self, "TiktokMetadataTable",
+            catalog_id = self.account,
+            database_name = database.ref,
+            table_input = glue.CfnTable.TableInputProperty(
+                name = "metadata",
+                description = "TikTok video metadata",
+                parameters = {
+                    "classification": "parquet",
+                    "has_encrypted_data": "false",
+                    "partition_pattern": "PROFILE=${profile}/PROCESSED_AT=${timestamp}",
+                    "EXTERNAL": "TRUE"
+                },
+                storage_descriptor = glue.CfnTable.StorageDescriptorProperty(
+                    location = "s3://tiktoktrends/videos/metadata",
+                    input_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+                    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+                    columns=[
+                        glue.CfnTable.ColumnProperty(name = "id", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "title", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "description", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "upload_date", type = "timestamp"),
+                        glue.CfnTable.ColumnProperty(name = "like_count", type = "bigint"),
+                        glue.CfnTable.ColumnProperty(name = "repost_count", type = "bigint"),
+                        glue.CfnTable.ColumnProperty(name = "comment_count", type = "bigint"),
+                        glue.CfnTable.ColumnProperty(name = "view_count", type = "bigint"),
+                        glue.CfnTable.ColumnProperty(name = "duration", type = "bigint"),
+                        glue.CfnTable.ColumnProperty(name = "webpage_url", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "channel", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "timestamp", type = "bigint"),
+                        glue.CfnTable.ColumnProperty(name = "track", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "artists", type = "array<string>"),
+                        glue.CfnTable.ColumnProperty(name = "artist", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "profile", type = "string")
+                    ], 
+                    serde_info = glue.CfnTable.SerdeInfoProperty(
+                        serialization_library = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+                        parameters = {
+                            "serialization.format": "1",
+                            "parquet.compression": "SNAPPY",
+                            "partition.timestamp.formats": "yyyy-MM-dd_HH:mm:ss"
+                        }
+                    )
+                ),
+                partition_keys = [
+                    glue.CfnTable.ColumnProperty(name = "PROFILE", type = "string"),
+                    glue.CfnTable.ColumnProperty(name = "PROCESSED_AT", type = "timestamp")
+                ]
+            )
+        )
+
+        # Create Text Analysis Table
+        text_table = glue.CfnTable(self, "TiktokTextTable",
+            catalog_id = self.account,
+            database_name = database.ref,
+            table_input = glue.CfnTable.TableInputProperty(
+                name = "text_analysis",
+                description = "TikTok video text analysis",
+                parameters = {
+                    "classification": "parquet",
+                    "has_encrypted_data": "false",
+                    "partition_pattern": "PROFILE=${profile}/PROCESSED_AT=${timestamp}",
+                    "EXTERNAL": "TRUE"
+                },
+                storage_descriptor = glue.CfnTable.StorageDescriptorProperty(
+                    location = "s3://tiktoktrends/videos/text",
+                    input_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat",
+                    output_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat",
+                    columns=[
+                        glue.CfnTable.ColumnProperty(name = "id", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "profile", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "description", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "title", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "transcript", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "language", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "category", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "summary", type = "string"),
+                        glue.CfnTable.ColumnProperty(name = "keywords", type = "array<string>")
+                    ],
+                    serde_info = glue.CfnTable.SerdeInfoProperty(
+                        serialization_library="org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe",
+                        parameters = {
+                            "serialization.format": "1",
+                            "parquet.compression": "SNAPPY",
+                            "partition.timestamp.formats": "yyyy-MM-dd_HH:mm:ss"
+                        }
+                    )
+                ),
+                partition_keys = [
+                    glue.CfnTable.ColumnProperty(name = "PROFILE", type = "string"),
+                    glue.CfnTable.ColumnProperty(name = "PROCESSED_AT", type = "timestamp")
+                ]
+            )
+        )
+
+        # Add dependencies
+        metadata_table.add_dependency(database)
+        text_table.add_dependency(database)
 
         # Add outputs
         CfnOutput(self, "MetadataRepositoryUri",

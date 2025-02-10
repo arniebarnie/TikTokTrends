@@ -16,7 +16,7 @@ This project implements a scalable data pipeline for analyzing TikTok videos usi
 
 ## Architecture
 
-### Pipeline Stages
+### ETL Pipeline
 
 1. **Metadata Extraction**
    - Downloads video metadata using yt-dlp
