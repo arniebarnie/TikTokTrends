@@ -41,7 +41,7 @@ This project implements a scalable data pipeline for analyzing TikTok videos usi
 The pipeline is built using AWS CDK with Python and includes:
 
 - **Networking**: VPC with public/private subnets
-- **Compute**: AWS Batch compute environments (GPU and Fargate)
+- **Compute**: AWS Batch compute environments (ECS and Fargate)
 - **Storage**: S3 buckets for data storage
 - **Serverless**: Lambda functions for pipeline orchestration
 - **Security**: IAM roles and security groups
@@ -85,7 +85,7 @@ cd tiktok-analytics
 ```sh
 cd infrastructure
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
