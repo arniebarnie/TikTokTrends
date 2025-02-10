@@ -25,12 +25,13 @@ This project implements a scalable data pipeline for analyzing TikTok videos usi
    - Stores results in S3
 
 2. **Video Transcription** 
-   - Triggered automatically when new metadata arrives
+   - Triggered automatically when new metadata arrive
    - Uses WhisperX for GPU-accelerated transcription
    - Runs on AWS Batch GPU instances (g4dn.xlarge)
    - Stores transcripts in S3
 
 3. **Text Analysis**
+   - Triggered automatically when new transcripts arrive
    - Analyzes transcripts using OpenAI GPT
    - Extracts categories, summaries, and keywords
    - Runs on AWS Batch Fargate containers
@@ -85,7 +86,7 @@ cd tiktok-analytics
 ```sh
 cd infrastructure
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 

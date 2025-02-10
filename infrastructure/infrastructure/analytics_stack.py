@@ -223,7 +223,7 @@ class AnalyticsStack(Stack):
             },
             job_definition_name = "tiktok-metadata-job",
             timeout = {
-                "attemptDurationSeconds": 3600
+                "attemptDurationSeconds": 60 * 60 * 6
             }
         )
 
@@ -284,7 +284,7 @@ class AnalyticsStack(Stack):
             },
             job_definition_name = "tiktok-text-analysis-job",
             timeout = {
-                "attemptDurationSeconds": 3600
+                "attemptDurationSeconds": 60 * 60 * 1
             }
         )
 
