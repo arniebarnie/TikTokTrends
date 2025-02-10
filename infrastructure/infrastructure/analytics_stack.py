@@ -308,23 +308,31 @@ class AnalyticsStack(Stack):
             timeout = Duration.minutes(1)
         )
         
-        # Add permissions for Lambda to submit Batch jobs
+        # Add permissions for Lambda to submit Batch jobs and use Athena
         metadata_trigger.add_to_role_policy(iam.PolicyStatement(
             effect = iam.Effect.ALLOW,
-            actions = ["batch:SubmitJob"],
+            actions = [
+                "batch:SubmitJob",
+                "athena:StartQueryExecution",
+                "athena:GetQueryExecution"
+            ],
             resources = [
                 f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-queue/{gpu_job_queue.job_queue_name}",
-                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-definition/tiktok-transcriber-job*",
-                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-definition/{transcription_job_definition.job_definition_name}:*"
+                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-definition/{transcription_job_definition.job_definition_name}:*",
+                "*"  # For Athena permissions
             ]
         ))
         
-        # Add S3 read permissions for the Lambda
+        # Add S3 permissions for Lambda
         metadata_trigger.add_to_role_policy(iam.PolicyStatement(
             effect = iam.Effect.ALLOW,
-            actions = ["s3:GetObject"],
+            actions = [
+                "s3:GetObject",
+                "s3:PutObject"  # For Athena results
+            ],
             resources = [
-                "arn:aws:s3:::tiktoktrends/*"
+                "arn:aws:s3:::tiktoktrends/*",
+                "arn:aws:s3:::tiktoktrends/athena-results/*"
             ]
         ))
 
@@ -485,6 +493,38 @@ class AnalyticsStack(Stack):
         metadata_table.add_dependency(database)
         text_table.add_dependency(database)
 
+        # Create text partition handler Lambda
+        text_trigger = LambdaFunction(self, "TextTriggerFunction",
+            runtime = lambda_.Runtime.PYTHON_3_9,
+            handler = "index.handler",
+            code = lambda_.Code.from_asset("infrastructure/lambda/text_trigger"),
+            timeout = Duration.minutes(5)
+        )
+        
+        # Add Athena permissions
+        text_trigger.add_to_role_policy(iam.PolicyStatement(
+            effect = iam.Effect.ALLOW,
+            actions = [
+                "athena:StartQueryExecution",
+                "athena:GetQueryExecution"
+            ],
+            resources = ["*"]
+        ))
+        
+        # Add S3 permissions for Athena results
+        text_trigger.add_to_role_policy(iam.PolicyStatement(
+            effect = iam.Effect.ALLOW,
+            actions = ["s3:PutObject"],
+            resources = ["arn:aws:s3:::tiktoktrends/athena-results/*"]
+        ))
+        
+        # Add S3 trigger for text analysis files
+        bucket.add_event_notification(
+            s3.EventType.OBJECT_CREATED, 
+            s3n.LambdaDestination(text_trigger),
+            s3.NotificationKeyFilter(prefix = "videos/text/profile=")
+        )
+        
         # Add outputs
         CfnOutput(self, "MetadataRepositoryUri",
             value = metadata_repository.repository_uri,
