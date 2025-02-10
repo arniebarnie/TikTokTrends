@@ -140,6 +140,7 @@ class VideoMetadata:
                 'webpage_url': info.get('webpage_url', ''),
                 'channel': info.get('channel'),
                 'timestamp': info.get('timestamp'),
+                'uploader': info.get('uploader'),
                 **track_info,  # Add track information
             }
         except Exception as e:
@@ -167,7 +168,6 @@ class VideoMetadata:
             for info_file in profile_dir.glob("*.info.json"):
                 metadata = self.extract_video_metadata(info_file)
                 if metadata:
-                    metadata['profile'] = profile
                     video_data.append(metadata)
 
             if not video_data:
@@ -215,7 +215,7 @@ def main():
             current_time = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
             upload_to_s3(
                 video_metadata, 
-                f"{CONFIG.s3_prefix}/PROFILE={profile}/PROCESSED_AT={current_time}/metadata.parquet"
+                f"{CONFIG.s3_prefix}/profile={profile}/processed_at={current_time}/metadata.parquet"
             )
             
         except Exception as e:

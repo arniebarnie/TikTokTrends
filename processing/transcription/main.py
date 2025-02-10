@@ -221,12 +221,12 @@ def main():
         video_metadata = read_metadata_from_s3(CONFIG.metadata_s3_key)
     else:
         video_metadata = read_metadata_from_s3(
-            "videos/metadata/PROFILE=noonessafe_pranks/PROCESSED_AT=2025-02-09 11:02:28/metadata.parquet"
+            "videos/metadata/profile=noonessafe_pranks/processed_at=2025-02-09 11:02:28/metadata.parquet"
         )
-    if 'PROFILE' in video_metadata.columns:
-        video_metadata.drop(columns = ['PROFILE'], inplace = True)
-    if 'PROCESSED_AT' in video_metadata.columns:
-        video_metadata.drop(columns = ['PROCESSED_AT'], inplace = True)
+    if 'profile' in video_metadata.columns:
+        video_metadata.drop(columns = ['profile'], inplace = True)
+    if 'processed_at' in video_metadata.columns:
+        video_metadata.drop(columns = ['processed_at'], inplace = True)
     
     # Load WhisperX models once
     LOGGER.info("Loading WhisperX models...")
@@ -246,15 +246,15 @@ def main():
     num_to_sample = min(CONFIG.max_transcribed_per_profile, len(video_metadata))
     sampled_metadata = video_metadata.sample(num_to_sample)
     
-    for profile in sampled_metadata['profile'].unique():
+    for profile in sampled_metadata['uploader'].unique():
         LOGGER.info(f"Processing profile: {profile}")
-        sampled_metadata_for_profile = sampled_metadata[sampled_metadata['profile'] == profile]
+        sampled_metadata_for_profile = sampled_metadata[sampled_metadata['uploader'] == profile]
         sampled_ids = sampled_metadata_for_profile['id'].tolist()
         transcripts = transcriber.process_videos(profile, sampled_ids)
         
         transcripts_df = pd.DataFrame({
             'id': sampled_ids,
-            'profile': [profile] * len(sampled_ids),
+            'uploader': [profile] * len(sampled_ids),
             'description': sampled_metadata_for_profile['description'].tolist(),
             'title': sampled_metadata_for_profile['title'].tolist(),
             'transcript': transcripts
@@ -263,7 +263,7 @@ def main():
         # Save transcripts to S3
         LOGGER.info(f"Saving transcripts to S3 for {profile}")
         current_time = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
-        s3_key = f"{CONFIG.s3_prefix}/PROFILE={profile}/PROCESSED_AT={current_time}/transcripts.parquet"
+        s3_key = f"{CONFIG.s3_prefix}/profile={profile}/processed_at={current_time}/transcripts.parquet"
         upload_to_s3(transcripts_df, s3_key)
         LOGGER.info(f"Transcripts saved to S3: {s3_key}")
 

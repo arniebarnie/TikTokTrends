@@ -122,26 +122,26 @@ def main():
         video_transcripts = read_transcripts_from_s3(CONFIG.s3_transcripts_key)
     else:
         video_transcripts = read_transcripts_from_s3(
-            "videos/transcripts/PROFILE=noonessafe_pranks/PROCESSED_AT=2025-02-09 23:23:15/transcripts.parquet"
+            "videos/transcripts/profile=noonessafe_pranks/processed_at=2025-02-09 23:23:15/transcripts.parquet"
         )
         video_transcripts['profile'] = 'noonessafe_pranks'
     
-    if 'PROFILE' in video_transcripts.columns:
-        video_transcripts.drop(columns = ['PROFILE'], inplace = True)
-    if 'PROCESSED_AT' in video_transcripts.columns:
-        video_transcripts.drop(columns = ['PROCESSED_AT'], inplace = True)
+    if 'profile' in video_transcripts.columns:
+        video_transcripts.drop(columns = ['profile'], inplace = True)
+    if 'processed_at' in video_transcripts.columns:
+        video_transcripts.drop(columns = ['processed_at'], inplace = True)
 
     text_processor = TextProcessor()
     
-    for profile in video_transcripts['profile'].unique():
+    for profile in video_transcripts['uploader'].unique():
         LOGGER.info(f"Processing profile: {profile}")
-        video_transcripts_for_profile = video_transcripts[video_transcripts['profile'] == profile]
+        video_transcripts_for_profile = video_transcripts[video_transcripts['uploader'] == profile]
         processed_transcripts = text_processor.process_video_transcripts(video_transcripts_for_profile)
         
         # Save processed transcripts to S3
         LOGGER.info(f"Saving processed transcripts to S3 for {profile}...")
         current_time = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
-        s3_key = f"{CONFIG.s3_prefix}/PROFILE={profile}/PROCESSED_AT={current_time}/text.parquet"
+        s3_key = f"{CONFIG.s3_prefix}/profile={profile}/processed_at={current_time}/text.parquet"
         upload_to_s3(processed_transcripts, s3_key)
         LOGGER.info(f"Transcripts saved to S3: {s3_key}")
 

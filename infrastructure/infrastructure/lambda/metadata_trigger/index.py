@@ -20,7 +20,7 @@ def create_valid_job_name(key: str) -> str:
         # Extract profile name from the path
         parts = decoded_key.split('/')
         for part in parts:
-            if part.startswith('PROFILE='):
+            if part.startswith('profile='):
                 profile = part.split('=')[1]
                 break
         else:
