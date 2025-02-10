@@ -69,7 +69,7 @@ def add_partition(bucket: str, key: str) -> None:
             QueryString=query,
             QueryExecutionContext={'Database': 'tiktok_analytics'},
             ResultConfiguration={
-                'OutputLocation': 's3://tiktoktrends/athena-results/'
+                'OutputLocation': f's3://{bucket}/athena-results/'
             }
         )
         

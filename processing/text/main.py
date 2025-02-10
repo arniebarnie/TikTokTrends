@@ -28,12 +28,15 @@ class Config:
         if not secret_arn:
             raise ValueError("OPENAI_SECRET_ARN environment variable is required")
         
+        # LOGGER.info(secret_arn)
         # Get OpenAI API key from Secrets Manager
         secrets_client = boto3.client('secretsmanager')
         try:
             response = secrets_client.get_secret_value(SecretId = secret_arn)
-            secret = json.loads(response['SecretString'])
-            self.openai_api_key = secret['OPENAI_API_KEY']
+            # LOGGER.info(response)
+            secret = response['SecretString']
+            # LOGGER.info(secret)
+            self.openai_api_key = secret
         except Exception as e:
             raise ValueError(f"Failed to get OpenAI API key from Secrets Manager: {e}")
         

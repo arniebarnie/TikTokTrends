@@ -17,6 +17,7 @@ from aws_cdk import (
 from constructs import Construct
 from aws_cdk.aws_lambda import Function as LambdaFunction
 from aws_cdk.aws_s3 import Bucket as S3Bucket
+import boto3
 
 class AnalyticsStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
@@ -308,17 +309,28 @@ class AnalyticsStack(Stack):
             timeout = Duration.minutes(1)
         )
         
-        # Add permissions for Lambda to submit Batch jobs and use Athena
+        # Add permissions for Lambda to submit Batch jobs and use Athena/Glue
         metadata_trigger.add_to_role_policy(iam.PolicyStatement(
             effect = iam.Effect.ALLOW,
             actions = [
                 "batch:SubmitJob",
                 "athena:StartQueryExecution",
-                "athena:GetQueryExecution"
+                "athena:GetQueryExecution",
+                "athena:GetWorkGroup",
+                "s3:ListBucket",
+                "s3:GetBucketLocation",
+                "glue:GetDatabase",
+                "glue:GetTable",
+                "glue:GetPartition",
+                "glue:GetPartitions",
+                "glue:BatchCreatePartition"
             ],
             resources = [
                 f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-queue/{gpu_job_queue.job_queue_name}",
                 f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-definition/{transcription_job_definition.job_definition_name}:*",
+                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:catalog",
+                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/tiktok_analytics",
+                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/tiktok_analytics/*",
                 "*"  # For Athena permissions
             ]
         ))
@@ -328,11 +340,13 @@ class AnalyticsStack(Stack):
             effect = iam.Effect.ALLOW,
             actions = [
                 "s3:GetObject",
-                "s3:PutObject"  # For Athena results
+                "s3:PutObject",
+                "s3:ListBucket",
+                "s3:GetBucketLocation"
             ],
             resources = [
-                "arn:aws:s3:::tiktoktrends/*",
-                "arn:aws:s3:::tiktoktrends/athena-results/*"
+                "arn:aws:s3:::tiktoktrends",  # Add bucket-level permissions
+                "arn:aws:s3:::tiktoktrends/*"
             ]
         ))
 
@@ -501,28 +515,51 @@ class AnalyticsStack(Stack):
             timeout = Duration.minutes(5)
         )
         
-        # Add Athena permissions
+        # Add Athena/Glue permissions for text trigger
         text_trigger.add_to_role_policy(iam.PolicyStatement(
             effect = iam.Effect.ALLOW,
             actions = [
                 "athena:StartQueryExecution",
-                "athena:GetQueryExecution"
+                "athena:GetQueryExecution",
+                "athena:GetWorkGroup",
+                "s3:ListBucket",
+                "s3:GetBucketLocation",
+                "glue:GetDatabase",
+                "glue:GetTable",
+                "glue:GetPartition",
+                "glue:GetPartitions",
+                "glue:BatchCreatePartition"
             ],
-            resources = ["*"]
+            resources = [
+                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:catalog",
+                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/tiktok_analytics",
+                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/tiktok_analytics/*",
+                "*"  # For Athena permissions
+            ]
         ))
         
-        # Add S3 permissions for Athena results
+        # Add S3 permissions for text trigger
         text_trigger.add_to_role_policy(iam.PolicyStatement(
             effect = iam.Effect.ALLOW,
-            actions = ["s3:PutObject"],
-            resources = ["arn:aws:s3:::tiktoktrends/athena-results/*"]
+            actions = [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:ListBucket",
+                "s3:GetBucketLocation"
+            ],
+            resources = [
+                "arn:aws:s3:::tiktoktrends",  # Add bucket-level permissions
+                "arn:aws:s3:::tiktoktrends/*"
+            ]
         ))
         
         # Add S3 trigger for text analysis files
         bucket.add_event_notification(
             s3.EventType.OBJECT_CREATED, 
             s3n.LambdaDestination(text_trigger),
-            s3.NotificationKeyFilter(prefix = "videos/text/profile=")
+            s3.NotificationKeyFilter(
+                prefix = "videos/text/",
+            )
         )
         
         # Add outputs
