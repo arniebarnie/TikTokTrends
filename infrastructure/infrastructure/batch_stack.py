@@ -118,7 +118,7 @@ class BatchStack(Stack):
             compute_resources = {
                 "type": "FARGATE",
                 "maxvCpus": 8,
-                "subnets": vpc.private_subnets,
+                "subnets": [subnet.subnet_id for subnet in vpc.private_subnets],
                 "securityGroupIds": [security_group.security_group_id],
             },
             service_role = self.batch_service_role.role_arn,
@@ -133,7 +133,7 @@ class BatchStack(Stack):
                 "minvCpus": 0,
                 "desiredvCpus": 0,
                 "instanceTypes": ["g4dn.xlarge"],
-                "subnets": vpc.public_subnets,
+                "subnets": [subnet.subnet_id for subnet in vpc.public_subnets],
                 "instanceRole": self.instance_profile.attr_arn,
                 "securityGroupIds": [security_group.security_group_id],
                 "allocationStrategy": "SPOT_CAPACITY_OPTIMIZED",

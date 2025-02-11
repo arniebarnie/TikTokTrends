@@ -2,6 +2,7 @@ from aws_cdk import (
     Stack,
     aws_lambda as lambda_,
     aws_s3_notifications as s3n,
+    aws_s3 as s3,
     aws_iam as iam,
     Duration,
     CfnOutput
@@ -22,7 +23,8 @@ class ServerlessStack(Stack):
                 "GPU_JOB_QUEUE": batch_stack.gpu_queue.job_queue_name,
                 "TRANSCRIBER_JOB_DEFINITION": batch_stack.transcription_job.job_definition_name,
             },
-            timeout = Duration.minutes(1)
+            timeout = Duration.minutes(1),
+            function_name = "tiktok-metadata-trigger"
         )
 
         # Add permissions for metadata trigger
@@ -60,7 +62,8 @@ class ServerlessStack(Stack):
                 "FARGATE_JOB_QUEUE": batch_stack.fargate_queue.job_queue_name,
                 "TEXT_ANALYSIS_JOB_DEFINITION": batch_stack.text_analysis_job.job_definition_name,
             },
-            timeout = Duration.minutes(1)
+            timeout = Duration.minutes(1),
+            function_name = "tiktok-transcript-trigger"
         )
 
         # Add permissions for transcript trigger
@@ -78,7 +81,8 @@ class ServerlessStack(Stack):
             runtime = lambda_.Runtime.PYTHON_3_9,
             handler = "index.handler",
             code = lambda_.Code.from_asset("infrastructure/lambda/text_trigger"),
-            timeout = Duration.minutes(5)
+            timeout = Duration.minutes(5),
+            function_name = "tiktok-text-trigger"
         )
 
         # Add permissions for text trigger
@@ -120,21 +124,21 @@ class ServerlessStack(Stack):
 
         # Add S3 triggers
         storage_stack.bucket.add_event_notification(
-            s3n.EventType.OBJECT_CREATED,
+            s3.EventType.OBJECT_CREATED,
             s3n.LambdaDestination(self.metadata_trigger),
-            s3n.NotificationKeyFilter(prefix="videos/metadata/")
+            s3.NotificationKeyFilter(prefix="videos/metadata/")
         )
 
         storage_stack.bucket.add_event_notification(
-            s3n.EventType.OBJECT_CREATED,
+            s3.EventType.OBJECT_CREATED,
             s3n.LambdaDestination(self.transcript_trigger),
-            s3n.NotificationKeyFilter(prefix="videos/transcripts/")
+            s3.NotificationKeyFilter(prefix="videos/transcripts/")
         )
 
         storage_stack.bucket.add_event_notification(
-            s3n.EventType.OBJECT_CREATED,
+            s3.EventType.OBJECT_CREATED,
             s3n.LambdaDestination(self.text_trigger),
-            s3n.NotificationKeyFilter(prefix="videos/text/")
+            s3.NotificationKeyFilter(prefix="videos/text/")
         )
 
         # Outputs
