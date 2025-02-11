@@ -286,7 +286,7 @@ class AnalyticsStack(Stack):
             },
             job_definition_name = "tiktok-text-analysis-job",
             timeout = {
-                "attemptDurationSeconds": 60 * 60 * 1
+                "attemptDurationSeconds": 60 * 60 * 2
             }
         )
 
@@ -430,7 +430,7 @@ class AnalyticsStack(Stack):
                         glue.CfnTable.ColumnProperty(name = "id", type = "string"),
                         glue.CfnTable.ColumnProperty(name = "title", type = "string"),
                         glue.CfnTable.ColumnProperty(name = "description", type = "string"),
-                        glue.CfnTable.ColumnProperty(name = "upload_date", type = "bigint"),
+                        glue.CfnTable.ColumnProperty(name = "upload_date", type = "timestamp"),
                         glue.CfnTable.ColumnProperty(name = "like_count", type = "bigint"),
                         glue.CfnTable.ColumnProperty(name = "repost_count", type = "bigint"),
                         glue.CfnTable.ColumnProperty(name = "comment_count", type = "bigint"),
