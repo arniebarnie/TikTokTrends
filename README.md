@@ -139,49 +139,59 @@ The pipeline is built using AWS CDK with Python and includes:
 ### Visualization
 ![streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)
 
-## Getting Started
+## Development Setup
 
 ### Prerequisites
-- AWS Account and configured credentials
 - Python 3.9+
-- Docker
-- AWS CDK CLI
+- Git
+- AWS Account
 
-### Installation
-
-1. Clone the repository
-```sh
+### Automatic Setup
+1. Clone the repository:
+```bash
 git clone https://github.com/yourusername/tiktok-analytics.git
 cd tiktok-analytics
 ```
 
-2. Install CDK dependencies
-```sh
-cd infrastructure
-python -m venv .venv
+2. Run the setup script:
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+### Manual Setup
+If you prefer to set up manually:
+
+1. Create Python virtual environment:
+```bash
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Deploy the infrastructure
-```sh
-cd infrastructure
-cdk deploy --all
+2. Install Node.js 20 using nvm:
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+nvm install 20
+nvm use 20
 ```
 
-4. Build and deploy the Docker images
-```sh
-# Build metadata container
-cd ingestion/metadata
-./build.sh
+3. Install AWS CDK:
+```bash
+npm install -g aws-cdk
+```
 
-# Build transcription container
-cd processing/transcription
-./build.sh
+### Verify Installation
+```bash
+# Check Python environment
+python --version
+pip list
 
-# Build text analysis container
-cd processing/text
-./build.sh
+# Check Node.js version
+node --version
+
+# Check CDK version
+cdk --version
 ```
 
 ## Pipeline Flow
