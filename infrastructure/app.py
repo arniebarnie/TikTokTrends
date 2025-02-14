@@ -12,13 +12,19 @@ from infrastructure.serverless_stack import ServerlessStack
 
 app = cdk.App()
 
+# Define constants
+BUCKET_NAME = "tiktoktrends-3"
+
 env = cdk.Environment(
     account = os.environ["CDK_DEFAULT_ACCOUNT"],
     region = os.environ["CDK_DEFAULT_REGION"]
 )
 
 # Create shared infrastructure stacks first
-storage_stack = StorageStack(app, "TiktokStorageStack", env = env)
+storage_stack = StorageStack(app, "TiktokStorageStack", 
+    bucket_name = BUCKET_NAME,  # Pass bucket name as parameter
+    env = env
+)
 secrets_stack = SecretsStack(app, "TiktokSecretsStack", env = env)
 network_stack = NetworkStack(app, "TiktokNetworkStack", env = env)
 container_stack = ContainerStack(app, "TiktokContainerStack", env = env)

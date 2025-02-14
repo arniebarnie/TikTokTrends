@@ -2,7 +2,8 @@ from aws_cdk import (
     Stack,
     aws_s3 as s3,
     aws_s3_notifications as s3n,
-    aws_sqs as sqs,
+    aws_sns as sns,
+    aws_sns_subscriptions as subscriptions,
     aws_glue as glue,
     RemovalPolicy,
     CfnOutput,
@@ -11,66 +12,45 @@ from aws_cdk import (
 from constructs import Construct
 
 class StorageStack(Stack):
-    def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
+    def __init__(self, scope: Construct, construct_id: str, bucket_name: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # Create SQS queues for S3 notifications
-        self.metadata_queue = sqs.Queue(self, "MetadataNotificationQueue",
-            queue_name = "tiktok-metadata-notification-queue",
-            visibility_timeout = Duration.minutes(5),
-            retention_period = Duration.days(14)
-        )
-
-        self.transcript_queue = sqs.Queue(self, "TranscriptNotificationQueue",
-            queue_name = "tiktok-transcript-notification-queue",
-            visibility_timeout = Duration.minutes(5),
-            retention_period = Duration.days(14)
-        )
-
-        self.text_queue = sqs.Queue(self, "TextNotificationQueue",
-            queue_name = "tiktok-text-notification-queue",
-            visibility_timeout = Duration.minutes(5),
-            retention_period = Duration.days(14)
-        )
-
-        # Create S3 bucket without notifications
+        # Create S3 bucket with provided name
         self.bucket = s3.Bucket(self, "TiktokBucket",
-            bucket_name = "tiktoktrends-2",
+            bucket_name = bucket_name,
             removal_policy = RemovalPolicy.RETAIN,
-            versioned = False,
-            lifecycle_rules = [
-                s3.LifecycleRule(
-                    transitions = [
-                        s3.Transition(
-                            storage_class = s3.StorageClass.INFREQUENT_ACCESS,
-                            transition_after = Duration.days(30)
-                        ),
-                        s3.Transition(
-                            storage_class = s3.StorageClass.GLACIER,
-                            transition_after = Duration.days(90)
-                        )
-                    ]
-                )
-            ]
         )
 
-        # Add S3 notifications to SQS queues
-        self.bucket.add_event_notification(
-            s3.EventType.OBJECT_CREATED,
-            s3n.SqsDestination(self.metadata_queue),
-            s3.NotificationKeyFilter(prefix = "videos/metadata/")
+        # Create SNS topics for different events
+        self.metadata_topic = sns.Topic(self, "MetadataTopic",
+            display_name = "Metadata Processing Topic"
         )
 
+        self.transcript_topic = sns.Topic(self, "TranscriptTopic",
+            display_name = "Transcript Processing Topic"
+        )
+
+        self.text_topic = sns.Topic(self, "TextTopic",
+            display_name = "Text Analysis Topic"
+        )
+
+        # Add S3 notifications to SNS topics
         self.bucket.add_event_notification(
             s3.EventType.OBJECT_CREATED,
-            s3n.SqsDestination(self.transcript_queue),
-            s3.NotificationKeyFilter(prefix = "videos/transcripts/")
+            s3n.SnsDestination(self.metadata_topic),
+            s3.NotificationKeyFilter(prefix="videos/metadata/")
         )
 
         self.bucket.add_event_notification(
             s3.EventType.OBJECT_CREATED,
-            s3n.SqsDestination(self.text_queue),
-            s3.NotificationKeyFilter(prefix = "videos/text/")
+            s3n.SnsDestination(self.transcript_topic),
+            s3.NotificationKeyFilter(prefix="videos/transcripts/")
+        )
+
+        self.bucket.add_event_notification(
+            s3.EventType.OBJECT_CREATED,
+            s3n.SnsDestination(self.text_topic),
+            s3.NotificationKeyFilter(prefix="videos/text/")
         )
 
         # Create Glue Database
@@ -182,23 +162,23 @@ class StorageStack(Stack):
             export_name = "TiktokDatabaseName"
         )
 
-        # Add queue outputs
-        CfnOutput(self, "MetadataNotificationQueueUrl",
-            value = self.metadata_queue.queue_url,
-            description = "URL of the metadata notification SQS queue",
-            export_name = "TiktokMetadataNotificationQueueUrl"
+        # Add topic outputs
+        CfnOutput(self, "MetadataTopicArn",
+            value = self.metadata_topic.topic_arn,
+            description = "ARN of the metadata processing topic",
+            export_name = "TiktokMetadataTopicArn"
         )
 
-        CfnOutput(self, "TranscriptNotificationQueueUrl",
-            value = self.transcript_queue.queue_url,
-            description = "URL of the transcript notification SQS queue",
-            export_name = "TiktokTranscriptNotificationQueueUrl"
+        CfnOutput(self, "TranscriptTopicArn",
+            value = self.transcript_topic.topic_arn,
+            description = "ARN of the transcript processing topic",
+            export_name = "TiktokTranscriptTopicArn"
         )
 
-        CfnOutput(self, "TextNotificationQueueUrl",
-            value = self.text_queue.queue_url,
-            description = "URL of the text notification SQS queue",
-            export_name = "TiktokTextNotificationQueueUrl"
+        CfnOutput(self, "TextTopicArn",
+            value = self.text_topic.topic_arn,
+            description = "ARN of the text analysis topic",
+            export_name = "TiktokTextTopicArn"
         )
 
     @property
@@ -217,16 +197,13 @@ class StorageStack(Stack):
         return self.bucket.bucket_arn
 
     @property
-    def metadata_queue_arn(self) -> str:
-        """Get the ARN of the metadata notification queue"""
-        return self.metadata_queue.queue_arn
+    def metadata_topic_arn(self) -> str:
+        return self.metadata_topic.topic_arn
 
     @property
-    def transcript_queue_arn(self) -> str:
-        """Get the ARN of the transcript notification queue"""
-        return self.transcript_queue.queue_arn
+    def transcript_topic_arn(self) -> str:
+        return self.transcript_topic.topic_arn
 
     @property
-    def text_queue_arn(self) -> str:
-        """Get the ARN of the text notification queue"""
-        return self.text_queue.queue_arn 
+    def text_topic_arn(self) -> str:
+        return self.text_topic.topic_arn 

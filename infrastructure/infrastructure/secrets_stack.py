@@ -15,7 +15,7 @@ class SecretsStack(Stack):
         self.openai_secret = secretsmanager.Secret(self, "OpenAISecret",
             secret_name = "tiktok/openai-api-key",
             description = "OpenAI API Key for TikTok text analysis",
-            removal_policy = RemovalPolicy.RETAIN  # Protect against accidental deletion
+            removal_policy = RemovalPolicy.DESTROY  # Protect against accidental deletion
         )
 
         # Create a role that can read the OpenAI secret

@@ -1,7 +1,7 @@
 from aws_cdk import (
     Stack,
     aws_lambda as lambda_,
-    aws_lambda_event_sources as lambda_events,
+    aws_sns_subscriptions as subscriptions,
     aws_iam as iam,
     Duration,
     CfnOutput
@@ -33,12 +33,6 @@ class ServerlessStack(Stack):
             function_name = "tiktok-metadata-trigger"
         )
 
-        # Add SQS trigger for metadata function
-        self.metadata_trigger.add_event_source(lambda_events.SqsEventSource(
-            storage_stack.metadata_queue,
-            batch_size = 1
-        ))
-
         # Create Lambda function for transcript trigger
         self.transcript_trigger = lambda_.Function(self, "TranscriptTriggerFunction",
             runtime = lambda_.Runtime.PYTHON_3_9,
@@ -53,12 +47,6 @@ class ServerlessStack(Stack):
             function_name = "tiktok-transcript-trigger"
         )
 
-        # Add SQS trigger for transcript function
-        self.transcript_trigger.add_event_source(lambda_events.SqsEventSource(
-            storage_stack.transcript_queue,
-            batch_size = 1
-        ))
-
         # Create Lambda function for text trigger
         self.text_trigger = lambda_.Function(self, "TextTriggerFunction",
             runtime = lambda_.Runtime.PYTHON_3_9,
@@ -69,11 +57,18 @@ class ServerlessStack(Stack):
             function_name = "tiktok-text-trigger"
         )
 
-        # Add SQS trigger for text function
-        self.text_trigger.add_event_source(lambda_events.SqsEventSource(
-            storage_stack.text_queue,
-            batch_size = 1
-        ))
+        # Subscribe Lambda functions to SNS topics
+        storage_stack.metadata_topic.add_subscription(
+            subscriptions.LambdaSubscription(self.metadata_trigger)
+        )
+
+        storage_stack.transcript_topic.add_subscription(
+            subscriptions.LambdaSubscription(self.transcript_trigger)
+        )
+
+        storage_stack.text_topic.add_subscription(
+            subscriptions.LambdaSubscription(self.text_trigger)
+        )
 
         # Add permissions for all functions
         for function in [self.metadata_trigger, self.transcript_trigger, self.text_trigger]:
