@@ -5,11 +5,6 @@ You are an expert in analyzing video content. Based on the provided information,
 3. Provide a concise summary of the video content (30 words).
 4. Extract 5 keywords that represent the key themes or topics in the video.
 
-Input:
-Title: {title}
-Description: {description}
-Transcript: {transcript}
-
 You must respond with ONLY a JSON object in this exact format, with no additional text:
 {{
     "language": "<language in lowercase>",
@@ -17,3 +12,8 @@ You must respond with ONLY a JSON object in this exact format, with no additiona
     "summary": "<30-word summary>",
     "keywords": ["<keyword1>", "<keyword2>", "<keyword3>", "<keyword4>", "<keyword5>"]
 }}
+
+Input:
+Title: {title}
+Description: {description}
+Transcript: {transcript}

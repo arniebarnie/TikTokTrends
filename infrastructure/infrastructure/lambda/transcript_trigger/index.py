@@ -31,9 +31,10 @@ def create_valid_job_name(key: str) -> str:
 
 def handler(event, context):
     try:
-        # Get the S3 bucket and key from the event
-        bucket = event['Records'][0]['s3']['bucket']['name']
-        key = event['Records'][0]['s3']['object']['key']
+        # Get the S3 bucket and key from the SQS event
+        s3_event = json.loads(event['Records'][0]['body'])
+        bucket = s3_event['Records'][0]['s3']['bucket']['name']
+        key = s3_event['Records'][0]['s3']['object']['key']
         
         # Decode the key for logging
         decoded_key = unquote(key)
@@ -41,10 +42,10 @@ def handler(event, context):
         
         # Submit the text analysis batch job
         response = batch.submit_job(
-            jobName=create_valid_job_name(key),
-            jobQueue=os.environ['FARGATE_JOB_QUEUE'],
-            jobDefinition=os.environ['TEXT_ANALYSIS_JOB_DEFINITION'],
-            containerOverrides={
+            jobName = create_valid_job_name(key),
+            jobQueue = os.environ['FARGATE_JOB_QUEUE'],
+            jobDefinition = os.environ['TEXT_ANALYSIS_JOB_DEFINITION'],
+            containerOverrides = {
                 'environment': [
                     {
                         'name': 'TRANSCRIPTS_S3_KEY',

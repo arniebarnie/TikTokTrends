@@ -3,6 +3,7 @@ import boto3
 import logging
 import re
 from urllib.parse import unquote
+import os
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -37,10 +38,10 @@ def add_partition(bucket: str, key: str) -> None:
         logger.info(f"Adding partition: profile={profile}, processed_at={processed_at}")
         
         response = athena.start_query_execution(
-            QueryString=query,
-            QueryExecutionContext={'Database': 'tiktok_analytics'},
-            ResultConfiguration={
-                'OutputLocation': 's3://tiktoktrends/athena-results/'
+            QueryString = query,
+            QueryExecutionContext = {'Database': 'tiktok_analytics'},
+            ResultConfiguration = {
+                'OutputLocation': f's3://{os.environ["ATHENA_RESULTS_BUCKET"]}/athena-results/'
             }
         )
         
@@ -62,9 +63,10 @@ def add_partition(bucket: str, key: str) -> None:
 
 def handler(event, context):
     try:
-        # Get the S3 bucket and key from the event
-        bucket = event['Records'][0]['s3']['bucket']['name']
-        key = event['Records'][0]['s3']['object']['key']
+        # Get the S3 bucket and key from the SQS event
+        s3_event = json.loads(event['Records'][0]['body'])
+        bucket = s3_event['Records'][0]['s3']['bucket']['name']
+        key = s3_event['Records'][0]['s3']['object']['key']
         
         # Decode the key for logging
         decoded_key = unquote(key)

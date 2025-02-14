@@ -1,8 +1,7 @@
 from aws_cdk import (
     Stack,
     aws_lambda as lambda_,
-    aws_s3_notifications as s3n,
-    aws_s3 as s3,
+    aws_lambda_event_sources as lambda_events,
     aws_iam as iam,
     Duration,
     CfnOutput
@@ -14,12 +13,19 @@ class ServerlessStack(Stack):
                 storage_stack, batch_stack, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        # Common environment variables
+        common_env = {
+            "ATHENA_RESULTS_BUCKET": storage_stack.bucket_name,
+            "S3_BUCKET": storage_stack.bucket_name
+        }
+
         # Create Lambda function for metadata trigger
         self.metadata_trigger = lambda_.Function(self, "MetadataTriggerFunction",
             runtime = lambda_.Runtime.PYTHON_3_9,
             handler = "index.handler",
             code = lambda_.Code.from_asset("infrastructure/lambda/metadata_trigger"),
             environment = {
+                **common_env,
                 "GPU_JOB_QUEUE": batch_stack.gpu_queue.job_queue_name,
                 "TRANSCRIBER_JOB_DEFINITION": batch_stack.transcription_job.job_definition_name,
             },
@@ -27,7 +33,65 @@ class ServerlessStack(Stack):
             function_name = "tiktok-metadata-trigger"
         )
 
-        # Add permissions for metadata trigger
+        # Add SQS trigger for metadata function
+        self.metadata_trigger.add_event_source(lambda_events.SqsEventSource(
+            storage_stack.metadata_queue,
+            batch_size = 1
+        ))
+
+        # Create Lambda function for transcript trigger
+        self.transcript_trigger = lambda_.Function(self, "TranscriptTriggerFunction",
+            runtime = lambda_.Runtime.PYTHON_3_9,
+            handler = "index.handler",
+            code = lambda_.Code.from_asset("infrastructure/lambda/transcript_trigger"),
+            environment = {
+                **common_env,
+                "FARGATE_JOB_QUEUE": batch_stack.fargate_text_queue.job_queue_name,
+                "TEXT_ANALYSIS_JOB_DEFINITION": batch_stack.text_analysis_job.job_definition_name,
+            },
+            timeout = Duration.minutes(1),
+            function_name = "tiktok-transcript-trigger"
+        )
+
+        # Add SQS trigger for transcript function
+        self.transcript_trigger.add_event_source(lambda_events.SqsEventSource(
+            storage_stack.transcript_queue,
+            batch_size = 1
+        ))
+
+        # Create Lambda function for text trigger
+        self.text_trigger = lambda_.Function(self, "TextTriggerFunction",
+            runtime = lambda_.Runtime.PYTHON_3_9,
+            handler = "index.handler",
+            code = lambda_.Code.from_asset("infrastructure/lambda/text_trigger"),
+            environment = common_env,
+            timeout = Duration.minutes(5),
+            function_name = "tiktok-text-trigger"
+        )
+
+        # Add SQS trigger for text function
+        self.text_trigger.add_event_source(lambda_events.SqsEventSource(
+            storage_stack.text_queue,
+            batch_size = 1
+        ))
+
+        # Add permissions for all functions
+        for function in [self.metadata_trigger, self.transcript_trigger, self.text_trigger]:
+            function.add_to_role_policy(iam.PolicyStatement(
+                effect = iam.Effect.ALLOW,
+                actions = [
+                    "s3:GetObject",
+                    "s3:PutObject",
+                    "s3:ListBucket",
+                    "s3:GetBucketLocation"
+                ],
+                resources = [
+                    storage_stack.bucket_arn,
+                    f"{storage_stack.bucket_arn}/*"
+                ]
+            ))
+
+        # Add specific permissions for metadata trigger
         self.metadata_trigger.add_to_role_policy(iam.PolicyStatement(
             effect = iam.Effect.ALLOW,
             actions = [
@@ -35,8 +99,6 @@ class ServerlessStack(Stack):
                 "athena:StartQueryExecution",
                 "athena:GetQueryExecution",
                 "athena:GetWorkGroup",
-                "s3:ListBucket",
-                "s3:GetBucketLocation",
                 "glue:GetDatabase",
                 "glue:GetTable",
                 "glue:GetPartition",
@@ -53,39 +115,17 @@ class ServerlessStack(Stack):
             ]
         ))
 
-        # Create Lambda function for transcript trigger
-        self.transcript_trigger = lambda_.Function(self, "TranscriptTriggerFunction",
-            runtime = lambda_.Runtime.PYTHON_3_9,
-            handler = "index.handler",
-            code = lambda_.Code.from_asset("infrastructure/lambda/transcript_trigger"),
-            environment = {
-                "FARGATE_JOB_QUEUE": batch_stack.fargate_queue.job_queue_name,
-                "TEXT_ANALYSIS_JOB_DEFINITION": batch_stack.text_analysis_job.job_definition_name,
-            },
-            timeout = Duration.minutes(1),
-            function_name = "tiktok-transcript-trigger"
-        )
-
-        # Add permissions for transcript trigger
+        # Add specific permissions for transcript trigger
         self.transcript_trigger.add_to_role_policy(iam.PolicyStatement(
             effect = iam.Effect.ALLOW,
             actions = ["batch:SubmitJob"],
             resources = [
-                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-queue/{batch_stack.fargate_queue.job_queue_name}",
+                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-queue/{batch_stack.fargate_text_queue.job_queue_name}",
                 f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-definition/{batch_stack.text_analysis_job.job_definition_name}:*"
             ]
         ))
 
-        # Create Lambda function for text trigger (partition management)
-        self.text_trigger = lambda_.Function(self, "TextTriggerFunction",
-            runtime = lambda_.Runtime.PYTHON_3_9,
-            handler = "index.handler",
-            code = lambda_.Code.from_asset("infrastructure/lambda/text_trigger"),
-            timeout = Duration.minutes(5),
-            function_name = "tiktok-text-trigger"
-        )
-
-        # Add permissions for text trigger
+        # Add specific permissions for text trigger
         self.text_trigger.add_to_role_policy(iam.PolicyStatement(
             effect = iam.Effect.ALLOW,
             actions = [
@@ -105,41 +145,6 @@ class ServerlessStack(Stack):
                 "*"  # For Athena permissions
             ]
         ))
-
-        # Add S3 permissions for all functions
-        for function in [self.metadata_trigger, self.transcript_trigger, self.text_trigger]:
-            function.add_to_role_policy(iam.PolicyStatement(
-                effect = iam.Effect.ALLOW,
-                actions = [
-                    "s3:GetObject",
-                    "s3:PutObject",
-                    "s3:ListBucket",
-                    "s3:GetBucketLocation"
-                ],
-                resources = [
-                    storage_stack.bucket_arn,
-                    f"{storage_stack.bucket_arn}/*"
-                ]
-            ))
-
-        # Add S3 triggers
-        storage_stack.bucket.add_event_notification(
-            s3.EventType.OBJECT_CREATED,
-            s3n.LambdaDestination(self.metadata_trigger),
-            s3.NotificationKeyFilter(prefix="videos/metadata/")
-        )
-
-        storage_stack.bucket.add_event_notification(
-            s3.EventType.OBJECT_CREATED,
-            s3n.LambdaDestination(self.transcript_trigger),
-            s3.NotificationKeyFilter(prefix="videos/transcripts/")
-        )
-
-        storage_stack.bucket.add_event_notification(
-            s3.EventType.OBJECT_CREATED,
-            s3n.LambdaDestination(self.text_trigger),
-            s3.NotificationKeyFilter(prefix="videos/text/")
-        )
 
         # Outputs
         CfnOutput(self, "MetadataTriggerArn",

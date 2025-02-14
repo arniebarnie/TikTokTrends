@@ -11,7 +11,7 @@ from constructs import Construct
 
 class BatchStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, 
-                vpc, security_group, container_stack, secrets_stack, **kwargs) -> None:
+                vpc, security_group, container_stack, secrets_stack, storage_stack, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         # Create IAM roles
@@ -52,7 +52,7 @@ class BatchStack(Stack):
         )
 
         # Create launch template for GPU instances
-        self.launch_template = ec2.CfnLaunchTemplate(self, "BatchLaunchTemplate",
+        self.launch_template = ec2.CfnLaunchTemplate(self, "GPULaunchTemplate",
             launch_template_data = {
                 "blockDeviceMappings": [{
                     "deviceName": "/dev/xvda",
@@ -107,17 +107,30 @@ class BatchStack(Stack):
                 "s3:ListBucket"
             ],
             resources = [
-                "arn:aws:s3:::tiktoktrends",
-                "arn:aws:s3:::tiktoktrends/*"
+                storage_stack.bucket.bucket_arn,
+                f"{storage_stack.bucket.bucket_arn}/*"
             ]
         ))
 
-        # Create compute environments
-        self.fargate_compute_env = batch.CfnComputeEnvironment(self, "FargateComputeEnv",
+        # Add new Fargate compute environment for text analysis
+        self.fargate_text_compute_env = batch.CfnComputeEnvironment(self, "FargateTextComputeEnv",
             type = "MANAGED",
             compute_resources = {
                 "type": "FARGATE",
-                "maxvCpus": 8,
+                "maxvCpus": 2 * 1,
+                "subnets": [subnet.subnet_id for subnet in vpc.private_subnets],
+                "securityGroupIds": [security_group.security_group_id],
+            },
+            service_role = self.batch_service_role.role_arn,
+            state = "ENABLED"
+        )
+
+        # Add new Fargate compute environment for metadata
+        self.fargate_metadata_compute_env = batch.CfnComputeEnvironment(self, "FargateMetadataComputeEnv",
+            type = "MANAGED",
+            compute_resources = {
+                "type": "FARGATE",
+                "maxvCpus": 2 * 4,
                 "subnets": [subnet.subnet_id for subnet in vpc.private_subnets],
                 "securityGroupIds": [security_group.security_group_id],
             },
@@ -152,14 +165,24 @@ class BatchStack(Stack):
             state = "ENABLED"
         )
 
-        # Create job queues
-        self.fargate_queue = batch.CfnJobQueue(self, "FargateJobQueue",
+        # Add new queue for text analysis
+        self.fargate_text_queue = batch.CfnJobQueue(self, "FargateTextJobQueue",
             compute_environment_order = [{
-                "computeEnvironment": self.fargate_compute_env.ref,
+                "computeEnvironment": self.fargate_text_compute_env.ref,
                 "order": 1
             }],
             priority = 1,
-            job_queue_name = "tiktok-fargate-queue"
+            job_queue_name = "tiktok-text-fargate-queue"
+        )
+
+        # Add new queue for metadata
+        self.fargate_metadata_queue = batch.CfnJobQueue(self, "FargateMetadataJobQueue",
+            compute_environment_order = [{
+                "computeEnvironment": self.fargate_metadata_compute_env.ref,
+                "order": 1
+            }],
+            priority = 1,
+            job_queue_name = "tiktok-metadata-fargate-queue"
         )
 
         self.gpu_queue = batch.CfnJobQueue(self, "GPUJobQueue",
@@ -256,14 +279,22 @@ class BatchStack(Stack):
         ))
 
         # Outputs
-        CfnOutput(self, "FargateQueueName",
-            value = self.fargate_queue.job_queue_name,
-            description = "The name of the Fargate job queue",
-            export_name = "TiktokFargateQueueName"
-        )
 
         CfnOutput(self, "GPUQueueName",
             value = self.gpu_queue.job_queue_name,
             description = "The name of the GPU job queue",
             export_name = "TiktokGPUQueueName"
+        )
+
+        # Add new outputs for the new queues
+        CfnOutput(self, "FargateTextQueueName",
+            value = self.fargate_text_queue.job_queue_name,
+            description = "The name of the Fargate text analysis job queue",
+            export_name = "TiktokFargateTextQueueName"
+        )
+
+        CfnOutput(self, "FargateMetadataQueueName",
+            value = self.fargate_metadata_queue.job_queue_name,
+            description = "The name of the Fargate metadata job queue",
+            export_name = "TiktokFargateMetadataQueueName"
         ) 

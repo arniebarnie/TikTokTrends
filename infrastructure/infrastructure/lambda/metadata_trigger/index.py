@@ -69,7 +69,7 @@ def add_partition(bucket: str, key: str) -> None:
             QueryString=query,
             QueryExecutionContext={'Database': 'tiktok_analytics'},
             ResultConfiguration={
-                'OutputLocation': f's3://{bucket}/athena-results/'
+                'OutputLocation': f's3://{os.environ["ATHENA_RESULTS_BUCKET"]}/athena-results/'
             }
         )
         
@@ -91,9 +91,11 @@ def add_partition(bucket: str, key: str) -> None:
 
 def handler(event, context):
     try:
-        # Get the S3 bucket and key from the event
-        bucket = event['Records'][0]['s3']['bucket']['name']
-        key = event['Records'][0]['s3']['object']['key']
+        # Get the S3 bucket and key from the SQS event
+        # SQS event contains the S3 event as a stringified JSON in the body
+        s3_event = json.loads(event['Records'][0]['body'])
+        bucket = s3_event['Records'][0]['s3']['bucket']['name']
+        key = s3_event['Records'][0]['s3']['object']['key']
         
         # Decode the key for logging
         decoded_key = unquote(key)
@@ -101,10 +103,10 @@ def handler(event, context):
         
         # Submit the transcription batch job
         response = batch.submit_job(
-            jobName=create_valid_job_name(key),
-            jobQueue=os.environ['GPU_JOB_QUEUE'],
-            jobDefinition=os.environ['TRANSCRIBER_JOB_DEFINITION'],
-            containerOverrides={
+            jobName = create_valid_job_name(key),
+            jobQueue = os.environ['GPU_JOB_QUEUE'],
+            jobDefinition = os.environ['TRANSCRIBER_JOB_DEFINITION'],
+            containerOverrides = {
                 'environment': [
                     {
                         'name': 'METADATA_S3_KEY',
