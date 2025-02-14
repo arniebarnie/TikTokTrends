@@ -57,7 +57,7 @@ class BatchStack(Stack):
                 "blockDeviceMappings": [{
                     "deviceName": "/dev/xvda",
                     "ebs": {
-                        "volumeSize": 100,
+                        "volumeSize": 30,
                         "volumeType": "gp3",
                         "deleteOnTermination": True
                     }

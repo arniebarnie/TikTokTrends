@@ -66,8 +66,8 @@ def add_partition(bucket: str, key: str) -> None:
         logger.info(f"Adding partition: profile={profile}, processed_at={processed_at}")
         
         response = athena.start_query_execution(
-            QueryString=query,
-            QueryExecutionContext={'Database': 'tiktok_analytics'},
+            QueryString = query,
+            QueryExecutionContext = {'Database': 'tiktok_analytics'},
             ResultConfiguration={
                 'OutputLocation': f's3://{os.environ["ATHENA_RESULTS_BUCKET"]}/athena-results/'
             }

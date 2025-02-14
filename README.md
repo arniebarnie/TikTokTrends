@@ -25,16 +25,16 @@ This project implements a scalable data pipeline for analyzing TikTok videos usi
    - Stores results in S3
 
 2. **Video Transcription** 
-   - Triggered automatically when new metadata arrives
+   - Triggered automatically via SNS when new metadata arrives in S3
    - Uses WhisperX for GPU-accelerated transcription
    - Runs on AWS Batch GPU instances (g4dn.xlarge)
-   - Stores transcripts in S3
+   - Stores transcripts in S3, triggering SNS notifications
 
 3. **Text Analysis**
-   - Triggered automatically when new transcripts arrives
+   - Triggered automatically via SNS when new transcripts arrive in S3
    - Extracts categories, summaries, and keywords from transcripts and metadata using OpenAI GPT
    - Runs on AWS Batch Fargate containers
-   - Stores analysis results in S3
+   - Stores analysis results in S3, triggering SNS notifications for downstream processing
 
 ### Data Lake Structure
 The data is organized in an S3-based data lake with the following structure:
@@ -122,6 +122,7 @@ The pipeline is built using AWS CDK with Python and includes:
 ![aws-batch](https://img.shields.io/badge/AWS_Batch-232F3E?style=flat-square&logo=amazonaws&logoColor=white)
 ![aws-lambda](https://img.shields.io/badge/AWS_Lambda-FF9900?style=flat-square&logo=awslambda&logoColor=white)
 ![aws-s3](https://img.shields.io/badge/Amazon_S3-569A31?style=flat-square&logo=amazons3&logoColor=white)
+![aws-sns](https://img.shields.io/badge/Amazon_SNS-FF4F8B?style=flat-square&logo=amazonaws&logoColor=white)
 ![aws-ecr](https://img.shields.io/badge/Amazon_ECR-232F3E?style=flat-square&logo=amazonaws&logoColor=white)
 ![aws-glue](https://img.shields.io/badge/AWS_Glue-232F3E?style=flat-square&logo=amazonaws&logoColor=white)
 ![aws-athena](https://img.shields.io/badge/Amazon_Athena-232F3E?style=flat-square&logo=amazonaws&logoColor=white)
