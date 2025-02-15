@@ -62,4 +62,11 @@ workspace/
 
 # Logs
 *.log
-logs/
+logs/venv/
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+build/
+dist/
+*.egg-info/

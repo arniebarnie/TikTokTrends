@@ -66,10 +66,10 @@ def add_partition(bucket: str, key: str) -> None:
         logger.info(f"Adding partition: profile={profile}, processed_at={processed_at}")
         
         response = athena.start_query_execution(
-            QueryString=query,
-            QueryExecutionContext={'Database': 'tiktok_analytics'},
+            QueryString = query,
+            QueryExecutionContext = {'Database': 'tiktok_analytics'},
             ResultConfiguration={
-                'OutputLocation': f's3://{bucket}/athena-results/'
+                'OutputLocation': f's3://{os.environ["ATHENA_RESULTS_BUCKET"]}/athena-results/'
             }
         )
         
@@ -91,45 +91,50 @@ def add_partition(bucket: str, key: str) -> None:
 
 def handler(event, context):
     try:
-        # Get the S3 bucket and key from the event
-        bucket = event['Records'][0]['s3']['bucket']['name']
-        key = event['Records'][0]['s3']['object']['key']
-        
-        # Decode the key for logging
-        decoded_key = unquote(key)
-        logger.info(f"Processing new metadata upload - Bucket: {bucket}, Key: {decoded_key}")
-        
-        # Submit the transcription batch job
-        response = batch.submit_job(
-            jobName=create_valid_job_name(key),
-            jobQueue=os.environ['GPU_JOB_QUEUE'],
-            jobDefinition=os.environ['TRANSCRIBER_JOB_DEFINITION'],
-            containerOverrides={
-                'environment': [
-                    {
-                        'name': 'METADATA_S3_KEY',
-                        'value': decoded_key
-                    },
-                    {
-                        'name': 'S3_BUCKET',
-                        'value': bucket
+        # Process each record in the event
+        for record in event['Records']:
+            # Get the S3 event from the SNS message
+            sns_message = record['Sns']['Message']
+            s3_event = json.loads(sns_message)
+            
+            # Process each S3 record
+            for s3_record in s3_event['Records']:
+                bucket = s3_record['s3']['bucket']['name']
+                key = s3_record['s3']['object']['key']
+                
+                # Decode the key for logging
+                decoded_key = unquote(key)
+                logger.info(f"Processing new metadata upload - Bucket: {bucket}, Key: {decoded_key}")
+                
+                # Submit the transcription batch job
+                response = batch.submit_job(
+                    jobName = create_valid_job_name(key),
+                    jobQueue = os.environ['GPU_JOB_QUEUE'],
+                    jobDefinition = os.environ['TRANSCRIBER_JOB_DEFINITION'],
+                    containerOverrides = {
+                        'environment': [
+                            {
+                                'name': 'METADATA_S3_KEY',
+                                'value': decoded_key
+                            },
+                            {
+                                'name': 'S3_BUCKET',
+                                'value': bucket
+                            }
+                        ]
                     }
-                ]
-            }
-        )
+                )
+                
+                # Add partition for the uploaded file
+                add_partition(bucket, decoded_key)
+                
+                logger.info(f"Submitted transcription job {response['jobName']} with ID {response['jobId']}")
         
-        # Add partition for the uploaded file
-        add_partition(bucket, decoded_key)
-        
-        logger.info(f"Submitted transcription job {response['jobName']} with ID {response['jobId']}")
         return {
             'statusCode': 200,
-            'body': json.dumps({
-                'jobId': response['jobId'],
-                'jobName': response['jobName']
-            })
+            'body': 'Successfully processed all metadata files'
         }
         
     except Exception as e:
-        logger.error(f"Error processing S3 event: {str(e)}")
+        logger.error(f"Error processing SNS event: {str(e)}")
         raise 

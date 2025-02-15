@@ -5,8 +5,9 @@ import json
 from pathlib import Path
 import pandas as pd
 import boto3
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 from datetime import datetime
+import time
 # Configure logging
 logging.basicConfig(level = logging.INFO)
 LOGGER = logging.getLogger(__name__)
@@ -19,6 +20,13 @@ CATEGORIES = [
     "Gaming", "Pets/Animals", "Music/Singing", "Life Hacks",
     "Relationships/Dating", "Parenting/Family", "Memes/Trends",
     "Health/Wellness", "Science/Experiments"
+]
+
+# Define OpenAI models in order of preference
+OPENAI_MODELS = [
+    "gpt-4o-mini",
+    "gpt-3.5-turbo",
+    "o1-mini"
 ]
 
 class Config:
@@ -40,7 +48,7 @@ class Config:
         except Exception as e:
             raise ValueError(f"Failed to get OpenAI API key from Secrets Manager: {e}")
         
-        self.s3_bucket = os.getenv('S3_BUCKET', 'tiktoktrends')
+        self.s3_bucket = os.getenv('S3_BUCKET')
         self.s3_prefix = 'videos/text'
         self.s3_transcripts_key = os.getenv('TRANSCRIPTS_S3_KEY')
         
@@ -49,10 +57,23 @@ class Config:
         with open(prompt_path, 'r') as f:
             self.prompt_template = f.read()
         
+        self.current_model_index = 0  # Track current model
         self.openai_client = OpenAI(api_key = self.openai_api_key)
         self.temperature = 0.2
         
         self.s3_client = boto3.client('s3')
+
+    @property
+    def current_model(self) -> str:
+        """Get the current model to use"""
+        return OPENAI_MODELS[self.current_model_index]
+    
+    def switch_to_next_model(self) -> str:
+        """Switch to next model in the list, cycling back to start if needed"""
+        self.current_model_index = (self.current_model_index + 1) % len(OPENAI_MODELS)
+        LOGGER.info(f"Switching to model: {self.current_model}")
+        return self.current_model
+
 CONFIG = Config()
 
 def read_transcripts_from_s3(transcripts_s3_key: str) -> pd.DataFrame:
@@ -71,33 +92,42 @@ class TextProcessor:
         
         prompt = CONFIG.prompt_template.format(
             categories_list = categories_list,
-            title = title,
-            description = description,
-            transcript = transcript
+            title = " ".join(title.split()),
+            description = " ".join(description.split()),
+            transcript = " ".join(transcript.split())
         )
         
-        # Call OpenAI API
-        try:
-            response = CONFIG.openai_client.chat.completions.create(
-                model = "gpt-3.5-turbo",
-                messages = [
-                    {
-                        "role": "system",
-                        "content": "You are an expert content analyzer. Respond only with valid JSON."
-                    },
-                    {"role": "user", "content": prompt}
-                ],
-                temperature = CONFIG.temperature,
-                response_format = {"type": "json_object"}  # Force JSON response
-            )
-            
-            # Parse the JSON response
-            analysis = json.loads(response.choices[0].message.content)
-            return analysis
-            
-        except Exception as e:
-            LOGGER.error(f"Error calling OpenAI API: {e}")
-            return None
+        # Try each model until success or all models fail
+        for _ in range(len(OPENAI_MODELS)):
+            try:
+                response = CONFIG.openai_client.chat.completions.create(
+                    model = CONFIG.current_model,
+                    messages = [
+                        {
+                            "role": "system",
+                            "content": "You are an expert content analyzer. Respond only with valid JSON."
+                        },
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature = CONFIG.temperature,
+                    response_format = {"type": "json_object"}
+                )
+                
+                # If successful, return the analysis
+                analysis = json.loads(response.choices[0].message.content)
+                return analysis
+                
+            except RateLimitError as e:
+                LOGGER.warning(f"Rate limit hit for model {CONFIG.current_model}. Switching models...")
+                CONFIG.switch_to_next_model()
+                continue
+                
+            except Exception as e:
+                LOGGER.error(f"Error calling OpenAI API with model {CONFIG.current_model}: {e}")
+                return None
+        
+        LOGGER.error("All models failed - rate limits hit for all models")
+        return None
     
     def process_video_transcripts(self, video_transcripts: pd.DataFrame) -> pd.DataFrame:
         # Initialize new columns
@@ -108,6 +138,7 @@ class TextProcessor:
         
         for index, row in video_transcripts.iterrows():
             try:
+                time.sleep(0.25)  # Sleep for 0.25 seconds to avoid rate limit
                 analysis = self.process_video(row['title'], row['description'], row['transcript'])
                 if analysis:
                     video_transcripts.at[index, 'language'] = analysis['language']
@@ -121,13 +152,7 @@ class TextProcessor:
         return video_transcripts
 
 def main():
-    if CONFIG.s3_transcripts_key:
-        video_transcripts = read_transcripts_from_s3(CONFIG.s3_transcripts_key)
-    else:
-        video_transcripts = read_transcripts_from_s3(
-            "videos/transcripts/profile=noonessafe_pranks/processed_at=2025-02-09 23:23:15/transcripts.parquet"
-        )
-        video_transcripts['profile'] = 'noonessafe_pranks'
+    video_transcripts = read_transcripts_from_s3(CONFIG.s3_transcripts_key)
     
     if 'profile' in video_transcripts.columns:
         video_transcripts.drop(columns = ['profile'], inplace = True)

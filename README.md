@@ -25,16 +25,16 @@ This project implements a scalable data pipeline for analyzing TikTok videos usi
    - Stores results in S3
 
 2. **Video Transcription** 
-   - Triggered automatically when new metadata arrive
+   - Triggered automatically via SNS when new metadata arrives in S3
    - Uses WhisperX for GPU-accelerated transcription
    - Runs on AWS Batch GPU instances (g4dn.xlarge)
-   - Stores transcripts in S3
+   - Stores transcripts in S3, triggering SNS notifications
 
 3. **Text Analysis**
-   - Analyzes transcripts using OpenAI GPT
-   - Extracts categories, summaries, and keywords
+   - Triggered automatically via SNS when new transcripts arrive in S3
+   - Extracts categories, summaries, and keywords from transcripts and metadata using OpenAI GPT
    - Runs on AWS Batch Fargate containers
-   - Stores analysis results in S3
+   - Stores analysis results in S3, triggering SNS notifications for downstream processing
 
 ### Data Lake Structure
 The data is organized in an S3-based data lake with the following structure:
@@ -112,7 +112,7 @@ The pipeline is built using AWS CDK with Python and includes:
 - **Networking**: VPC with public/private subnets
 - **Compute**: AWS Batch compute environments (ECS and Fargate)
 - **Storage**: S3 buckets for data storage
-- **Serverless**: Lambda functions for pipeline orchestration
+- **Serverless**: SNS and Lambda functions for pipeline orchestration
 - **Security**: IAM roles and security groups
 - **Containers**: ECR repositories for Docker images
 
@@ -122,7 +122,10 @@ The pipeline is built using AWS CDK with Python and includes:
 ![aws-batch](https://img.shields.io/badge/AWS_Batch-232F3E?style=flat-square&logo=amazonaws&logoColor=white)
 ![aws-lambda](https://img.shields.io/badge/AWS_Lambda-FF9900?style=flat-square&logo=awslambda&logoColor=white)
 ![aws-s3](https://img.shields.io/badge/Amazon_S3-569A31?style=flat-square&logo=amazons3&logoColor=white)
+![aws-sns](https://img.shields.io/badge/Amazon_SNS-FF4F8B?style=flat-square&logo=amazonaws&logoColor=white)
 ![aws-ecr](https://img.shields.io/badge/Amazon_ECR-232F3E?style=flat-square&logo=amazonaws&logoColor=white)
+![aws-glue](https://img.shields.io/badge/AWS_Glue-232F3E?style=flat-square&logo=amazonaws&logoColor=white)
+![aws-athena](https://img.shields.io/badge/Amazon_Athena-232F3E?style=flat-square&logo=amazonaws&logoColor=white)
 
 ### AI/ML
 ![openai](https://img.shields.io/badge/OpenAI-412991?style=flat-square&logo=openai&logoColor=white)
@@ -134,49 +137,62 @@ The pipeline is built using AWS CDK with Python and includes:
 ![docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)
 ![aws-cdk](https://img.shields.io/badge/AWS_CDK-232F3E?style=flat-square&logo=amazonaws&logoColor=white)
 
-## Getting Started
+### Visualization
+![streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)
+
+## Development Setup
 
 ### Prerequisites
-- AWS Account and configured credentials
 - Python 3.9+
-- Docker
-- AWS CDK CLI
+- Git
+- AWS Account
 
-### Installation
-
-1. Clone the repository
-```sh
+### Automatic Setup
+1. Clone the repository:
+```bash
 git clone https://github.com/yourusername/tiktok-analytics.git
 cd tiktok-analytics
 ```
 
-2. Install CDK dependencies
-```sh
-cd infrastructure
-python -m venv .venv
+2. Run the setup script:
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+### Manual Setup
+If you prefer to set up manually:
+
+1. Create Python virtual environment:
+```bash
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Deploy the infrastructure
-```sh
-cd infrastructure
-cdk deploy --all
+2. Install Node.js 20 using nvm:
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+nvm install 20
+nvm use 20
 ```
 
-4. Build and deploy the Docker images
-```sh
-# Build metadata container
-cd ingestion/metadata
-./build.sh
+3. Install AWS CDK:
+```bash
+npm install -g aws-cdk
+```
 
-# Build transcription container
-cd processing/transcription
-./build.sh
+### Verify Installation
+```bash
+# Check Python environment
+python --version
+pip list
 
-# Build text analysis container
-cd processing/text
-./build.sh
+# Check Node.js version
+node --version
+
+# Check CDK version
+cdk --version
 ```
 
 ## Pipeline Flow

@@ -17,7 +17,7 @@ LOGGER = logging.getLogger(__name__)
 class Config:
     def __init__(self):
         # AWS Configuration
-        self.s3_bucket = os.getenv('S3_BUCKET', 'tiktoktrends')
+        self.s3_bucket = os.getenv('S3_BUCKET')
         self.s3_prefix = 'videos/metadata'
         self.profiles_s3_key = os.getenv('PROFILES_S3_KEY')
         

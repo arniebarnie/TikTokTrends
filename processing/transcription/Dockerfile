@@ -1,6 +1,7 @@
-FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
+# Build stage
+FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime AS builder
 
-# Install system dependencies
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
@@ -12,11 +13,22 @@ RUN pip install --no-cache-dir \
 
 # Setup workspace
 WORKDIR /app
-RUN mkdir -p /workspace
 
 # Install Python packages
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Runtime stage
+FROM pytorch/pytorch:2.1.0-cuda11.8-cudnn8-runtime
+
+# Copy only necessary files from builder
+COPY --from=builder /opt/conda/lib/python3.10/site-packages /opt/conda/lib/python3.10/site-packages
+COPY --from=builder /usr/bin/ffmpeg /usr/bin/ffmpeg
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libav* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libpostproc* /usr/lib/x86_64-linux-gnu/
+
+WORKDIR /app
+RUN mkdir -p /workspace
 
 # Copy application code
 COPY . .

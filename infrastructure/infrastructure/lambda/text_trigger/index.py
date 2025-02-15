@@ -1,16 +1,18 @@
 import json
 import boto3
 import logging
-import re
+import os
 from urllib.parse import unquote
+import re
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger()
-logger.setLevel(logging.INFO)
 
 athena = boto3.client('athena')
 
 def add_partition(bucket: str, key: str) -> None:
-    """Add partition to text_analysis table for the uploaded file."""
+    """Add partition to Glue table for the uploaded file."""
     try:
         # Extract partition values from the key
         partition_pattern = re.compile(r'profile=([^/]+)/processed_at=([^/]+)/')
@@ -37,10 +39,10 @@ def add_partition(bucket: str, key: str) -> None:
         logger.info(f"Adding partition: profile={profile}, processed_at={processed_at}")
         
         response = athena.start_query_execution(
-            QueryString=query,
-            QueryExecutionContext={'Database': 'tiktok_analytics'},
-            ResultConfiguration={
-                'OutputLocation': 's3://tiktoktrends/athena-results/'
+            QueryString = query,
+            QueryExecutionContext = {'Database': 'tiktok_analytics'},
+            ResultConfiguration = {
+                'OutputLocation': f's3://{os.environ["ATHENA_RESULTS_BUCKET"]}/athena-results/'
             }
         )
         
@@ -62,24 +64,29 @@ def add_partition(bucket: str, key: str) -> None:
 
 def handler(event, context):
     try:
-        # Get the S3 bucket and key from the event
-        bucket = event['Records'][0]['s3']['bucket']['name']
-        key = event['Records'][0]['s3']['object']['key']
-        
-        # Decode the key for logging
-        decoded_key = unquote(key)
-        logger.info(f"Processing new text analysis file - Bucket: {bucket}, Key: {decoded_key}")
-        
-        # Add partition for the uploaded file
-        add_partition(bucket, decoded_key)
+        # Process each record in the event
+        for record in event['Records']:
+            # Get the S3 event from the SNS message
+            sns_message = record['Sns']['Message']
+            s3_event = json.loads(sns_message)
+            
+            # Process each S3 record
+            for s3_record in s3_event['Records']:
+                bucket = s3_record['s3']['bucket']['name']
+                key = s3_record['s3']['object']['key']
+                
+                # Decode the key for logging
+                decoded_key = unquote(key)
+                logger.info(f"Processing new text analysis upload - Bucket: {bucket}, Key: {decoded_key}")
+                
+                # Add partition for the uploaded file
+                add_partition(bucket, decoded_key)
         
         return {
             'statusCode': 200,
-            'body': json.dumps({
-                'message': 'Successfully added partition'
-            })
+            'body': 'Successfully processed all text analysis files'
         }
         
     except Exception as e:
-        logger.error(f"Error processing S3 event: {str(e)}")
+        logger.error(f"Error processing SNS event: {str(e)}")
         raise 
