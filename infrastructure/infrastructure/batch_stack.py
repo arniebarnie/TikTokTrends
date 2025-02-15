@@ -57,7 +57,7 @@ class BatchStack(Stack):
                 "blockDeviceMappings": [{
                     "deviceName": "/dev/xvda",
                     "ebs": {
-                        "volumeSize": 30,
+                        "volumeSize": 100,
                         "volumeType": "gp3",
                         "deleteOnTermination": True
                     }
@@ -142,7 +142,7 @@ class BatchStack(Stack):
             type = "MANAGED",
             compute_resources = {
                 "type": "SPOT",
-                "maxvCpus": 4 * 3,
+                "maxvCpus": 4 * 1,
                 "minvCpus": 0,
                 "desiredvCpus": 0,
                 "instanceTypes": ["g4dn.xlarge"],

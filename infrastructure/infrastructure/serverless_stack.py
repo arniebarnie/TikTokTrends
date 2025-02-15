@@ -116,7 +116,8 @@ class ServerlessStack(Stack):
             actions = ["batch:SubmitJob"],
             resources = [
                 f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-queue/{batch_stack.fargate_text_queue.job_queue_name}",
-                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-definition/{batch_stack.text_analysis_job.job_definition_name}:*"
+                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-definition/{batch_stack.text_analysis_job.job_definition_name}:*",
+                f"arn:aws:batch:{Stack.of(self).region}:{Stack.of(self).account}:job-definition/*"
             ]
         ))
 

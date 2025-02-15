@@ -3,4 +3,3 @@ whisperx
 pandas
 boto3
 pyarrow
-s3fs

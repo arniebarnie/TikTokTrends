@@ -92,9 +92,9 @@ class TextProcessor:
         
         prompt = CONFIG.prompt_template.format(
             categories_list = categories_list,
-            title = title,
-            description = description,
-            transcript = transcript
+            title = " ".join(title.split()),
+            description = " ".join(description.split()),
+            transcript = " ".join(transcript.split())
         )
         
         # Try each model until success or all models fail
@@ -138,7 +138,7 @@ class TextProcessor:
         
         for index, row in video_transcripts.iterrows():
             try:
-                time.sleep(1)  # Sleep for 1 second to avoid rate limit
+                time.sleep(0.25)  # Sleep for 0.25 seconds to avoid rate limit
                 analysis = self.process_video(row['title'], row['description'], row['transcript'])
                 if analysis:
                     video_transcripts.at[index, 'language'] = analysis['language']

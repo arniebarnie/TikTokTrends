@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 # S3 Configuration
-S3_BUCKET = 'tiktoktrends-3'
+S3_BUCKET = 'tiktoktrends'
 S3_BATCH_JOBS_PREFIX = 'batch-jobs'
 
 # Batch Job Configuration

@@ -13,7 +13,7 @@ from infrastructure.serverless_stack import ServerlessStack
 app = cdk.App()
 
 # Define constants
-BUCKET_NAME = "tiktoktrends-3"
+BUCKET_NAME = "tiktoktrends"
 
 env = cdk.Environment(
     account = os.environ["CDK_DEFAULT_ACCOUNT"],

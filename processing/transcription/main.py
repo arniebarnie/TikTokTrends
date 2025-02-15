@@ -50,7 +50,10 @@ def setup_directories():
 
 def read_metadata_from_s3(metadata_s3_key: str) -> List[Dict[str, Any]]:
     """read in parquet file from s3"""
-    return pd.read_parquet(f's3://{CONFIG.s3_bucket}/{metadata_s3_key}')
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir) / 'data.parquet'
+        s3_client.download_file(CONFIG.s3_bucket, metadata_s3_key, temp_path)
+        return pd.read_parquet(temp_path)
 
 def upload_to_s3(df: pd.DataFrame, key: str):
     with tempfile.TemporaryDirectory() as temp_dir:
