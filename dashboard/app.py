@@ -74,7 +74,8 @@ def get_profile_stats():
             FROM metadata
             GROUP BY profile
         """,
-        database = "tiktok_analytics"
+        database = "tiktok_analytics",
+        boto3_session = role_session
     )
     
     quality = data[["profile", "videos detected"]]
@@ -112,7 +113,8 @@ def get_profile_videos_analyzed():
             FROM text_analysis
             GROUP BY profile
         """,
-        database = "tiktok_analytics"
+        database = "tiktok_analytics",
+        boto3_session = role_session
     )
     
     data.columns = data.columns.str.title()
@@ -140,7 +142,8 @@ def get_all_profiles_data():
             INNER JOIN text_analysis USING (id)
             ORDER BY upload_date
         """,
-        database = "tiktok_analytics"
+        database = "tiktok_analytics",
+        boto3_session = role_session
     )
     
     data.columns = data.columns.str.title()
