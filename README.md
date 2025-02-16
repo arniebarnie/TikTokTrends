@@ -14,6 +14,21 @@
 ## Overview
 This project implements a scalable data pipeline for analyzing TikTok videos using AWS services. It extracts video metadata and content, performs transcription and text analysis, and stores the results for further analysis.
 
+## Dashboard
+The project includes an interactive dashboard built with Streamlit that visualizes insights from the analyzed TikTok data. The dashboard is publicly accessible at [tiktoktrends.streamlit.app](https://tiktoktrends.streamlit.app/).
+
+### Features
+- **Video Metrics**: Detailed statistics on views, likes, comments, and engagement rates
+- **Content Analysis**: Breakdown of content categories and their performance
+- **Keyword Analysis**: AI-powered analysis of which keywords drive the most views
+- **Interaction Patterns**: Insights into user engagement patterns across different content types
+
+### Visualizations
+- Interactive histograms showing metric distributions
+- Bar charts comparing performance across content categories
+- Time series analysis of engagement trends
+- Keyword impact analysis with predictive modeling
+
 ## Architecture
 
 ### ETL Pipeline
