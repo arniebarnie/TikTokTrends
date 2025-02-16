@@ -1,4 +1,5 @@
 import streamlit as st
+import boto3
 import awswrangler as wr
 import plotly.express as px
 import plotly.graph_objects as go
@@ -10,6 +11,34 @@ from scipy import sparse
 from sklearn.preprocessing import MultiLabelBinarizer
 from sklearn.linear_model import ElasticNetCV
 from plotly.subplots import make_subplots
+
+# Set up AWS credentials from secrets
+aws_credentials = st.secrets["aws_credentials"]
+
+# Create AWS session with role assumption
+session = boto3.Session(
+    aws_access_key_id = aws_credentials["aws_access_key_id"],
+    aws_secret_access_key = aws_credentials["aws_secret_access_key"],
+    region_name = aws_credentials["region"]
+)
+
+# Create STS client to assume role
+sts_client = session.client('sts')
+assumed_role_object = sts_client.assume_role(
+    RoleArn = aws_credentials["role_arn"],
+    RoleSessionName = "StreamlitSession"
+)
+
+# Create session with temporary credentials
+role_session = boto3.Session(
+    aws_access_key_id=assumed_role_object['Credentials']['AccessKeyId'],
+    aws_secret_access_key=assumed_role_object['Credentials']['SecretAccessKey'],
+    aws_session_token=assumed_role_object['Credentials']['SessionToken'],
+    region_name=aws_credentials["region"]
+)
+
+# Update wrangler config to use role session
+wr.config.boto3_session = role_session
 
 @st.cache_data
 def get_profile_stats():
@@ -179,6 +208,8 @@ def top_predictive_keywords_for_category(category):
     keyword_importances = keyword_model_for_category(category)
     head = keyword_importances.sort_values(by = 'Impact', key = abs, ascending = False).head(10)
     return head[head['Impact'] > 0]
+
+st.title("TikTok's Top Influencers")
 
 stats = get_profile_stats()
 videos_analyzed = get_profile_videos_analyzed()
