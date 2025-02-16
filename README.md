@@ -15,10 +15,10 @@
 This project implements a scalable data pipeline for analyzing TikTok videos using AWS services. It extracts video metadata and content, performs transcription and text analysis, and stores the results for further analysis.
 
 ## Dashboard
-The project includes an interactive dashboard built with Streamlit that visualizes insights from the analyzed TikTok data. The dashboard is publicly accessible at [tiktoktrends.streamlit.app](https://tiktoktrends.streamlit.app/).
+A Streamlit that visualizes insights from the analyzed TikTok data is publicly accessible at [tiktoktrends.streamlit.app](https://tiktoktrends.streamlit.app/).
 
 ### Features
-- **Video Metrics**: Detailed statistics on views, likes, comments, and engagement rates
+- **Video Metrics**: Detailed statistics on views, likes, comments, and repost rates
 - **Content Analysis**: Breakdown of content categories and their performance
 - **Keyword Analysis**: AI-powered analysis of which keywords drive the most views
 - **Interaction Patterns**: Insights into user engagement patterns across different content types
@@ -155,61 +155,6 @@ The pipeline is built using AWS CDK with Python and includes:
 ### Visualization
 ![streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)
 
-## Development Setup
-
-### Prerequisites
-- Python 3.9+
-- Git
-- AWS Account
-
-### Automatic Setup
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/tiktok-analytics.git
-cd tiktok-analytics
-```
-
-2. Run the setup script:
-```bash
-chmod +x setup.sh
-./setup.sh
-```
-
-### Manual Setup
-If you prefer to set up manually:
-
-1. Create Python virtual environment:
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-2. Install Node.js 20 using nvm:
-```bash
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
-nvm install 20
-nvm use 20
-```
-
-3. Install AWS CDK:
-```bash
-npm install -g aws-cdk
-```
-
-### Verify Installation
-```bash
-# Check Python environment
-python --version
-pip list
-
-# Check Node.js version
-node --version
-
-# Check CDK version
-cdk --version
-```
-
 ## Pipeline Flow
 
 ```mermaid
@@ -221,9 +166,6 @@ graph LR
     E --> F[Text Analysis]
     F --> G[Analysis Storage]
 ```
-
-## Contributing
-Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
