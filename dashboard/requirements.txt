@@ -1,0 +1,8 @@
+streamlit
+boto3
+awswrangler
+plotly
+pandas
+numpy
+scikit-learn
+scipy
