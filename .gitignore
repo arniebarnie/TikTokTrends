@@ -70,3 +70,5 @@ node_modules/
 build/
 dist/
 *.egg-info/
+
+.devcontainer/

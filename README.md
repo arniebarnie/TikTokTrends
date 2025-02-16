@@ -43,13 +43,13 @@ A Streamlit that visualizes insights from the analyzed TikTok data is publicly a
    - Triggered automatically via SNS when new metadata arrives in S3
    - Uses WhisperX for GPU-accelerated transcription
    - Runs on AWS Batch GPU instances (g4dn.xlarge)
-   - Stores transcripts in S3, triggering SNS notifications
+   - Stores transcripts in S3
 
 3. **Text Analysis**
    - Triggered automatically via SNS when new transcripts arrive in S3
    - Extracts categories, summaries, and keywords from transcripts and metadata using OpenAI GPT
    - Runs on AWS Batch Fargate containers
-   - Stores analysis results in S3, triggering SNS notifications for downstream processing
+   - Stores analysis results in S3
 
 ### Data Lake Structure
 The data is organized in an S3-based data lake with the following structure:
