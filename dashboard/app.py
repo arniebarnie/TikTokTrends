@@ -40,6 +40,8 @@ role_session = boto3.Session(
 # Update wrangler config to use role session
 wr.config.boto3_session = role_session
 
+st.set_page_config(page_title = "TikTok Trends", layout = "wide")
+
 @st.cache_data
 def get_profile_stats():
     data = wr.athena.read_sql_query(
